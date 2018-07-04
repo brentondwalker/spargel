@@ -1,0 +1,5 @@
+package spargel
+
+object RddPartitioner {
+  
+}
