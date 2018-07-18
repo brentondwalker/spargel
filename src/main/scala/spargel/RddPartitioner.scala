@@ -175,6 +175,57 @@ object RddPartitioner {
       return myrdd
     }
     
+    
+    /**
+     * Generate a huge RDD.  Each record is a tuple containing an integer index
+     * and a (huge) array of random bytes.  This makes the content of the arrays
+     * incompressible.
+     * 
+     * The size of the partitions can be set based on the worker where the
+     * partition is being created.
+     * The partionSize aparameter should give the desired partition size (in
+     * Bytes) for partitions created on each host.  For any host not listed in
+     * the Map, it will use a default partition size of 1.
+     * 
+     * We want the partitons to be evenly distributed across the workers, even
+     * if they are irregular in their sizes.  Therefore we need the
+     * partitions-creation tasks to take equal amounts of time.  Add a
+     * spin-waiting component to this so all tasks take the same time.
+     */
+    def getBigRandomHostnameRddTimed(sc:SparkContext, numPartitions:Int, runtime:Int, partitionSize:Map[String,Int], defaultPartitionSize:Int=1):RDD[(Int,Array[Byte])] = {
+
+      val tmprdd = sc.parallelize(1 to numPartitions, numPartitions).map { i =>
+        i
+      }.persist
+      
+      val myrdd = tmprdd.mapPartitionsWithIndex((i,it) => {
+        val startTime = java.lang.System.currentTimeMillis()
+        
+        val ctx = TaskContext.get()
+        //val stageId = ctx.stageId
+        //ctx.getLocalProperty("spark.executor.cores")
+        val targetStopTime = startTime + runtime
+        
+        val hostname = java.net.InetAddress.getLocalHost().getHostName()
+        val psize = partitionSize.getOrElse(hostname, defaultPartitionSize)
+        val maxsize = partitionSize.valuesIterator.max
+
+        val mypart = List((i, Array.fill[Byte](psize)((scala.util.Random.nextInt(256) - 128).toByte))).iterator
+        
+        // waste time so all tasks take the same ammt of time
+        while (java.lang.System.currentTimeMillis() < targetStopTime) {
+            val xx = random * 2 - 1
+            val yy = random * 2 - 1
+        }
+
+        mypart
+      }, preservesPartitioning=true)
+      
+      return myrdd
+    }
+
+    
+    
     /**
      * For each partition print out the worker where it is stored.
      * Running on a cluster this will go to stdout on the workers.
