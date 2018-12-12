@@ -12,7 +12,9 @@ import org.apache.spark.TaskContext
 import scala.math.random
 
 /**
- * Workloads that run for a fixed length of time on each entry.
+ * Workloads that run for a fixed length of time on each entry.  The runtime can
+ * depend on hostname.  So you can make different hosts appear to run faster or
+ * slower.
  * The actual workloads have to be defined as functions so they can be
  * serialized and used in map operations.
  */

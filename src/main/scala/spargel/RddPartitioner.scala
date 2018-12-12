@@ -59,6 +59,12 @@ object RddPartitioner {
      * Run a time-limited workload on every entry of an RDD.
      * The runtime of each task depends on the hostname of the worker it runs
      * on.
+     * The workload must be a timed workload taking arguments (A,Int).
+     * 
+     * XXX This assumes a small number of hosts and that the last character of
+     *     the hostname is a number.  The runtime used will be a function of the
+     *     hostnumber.
+     *     
      * Return an RDD containing the worker each task ran on.
      */
     def hostnameWorkloader[A](r:RDD[A], workload:(A,Int)=>Unit): RDD[(String,Int)] = {
@@ -77,6 +83,7 @@ object RddPartitioner {
     
     /**
      * Run a workload on every entry of an RDD.
+     * The workload takes a single argument of type (A).
      * Return a pair RDD whose keys are the worker names, and values
      * are task IDs that ran on that worker.
      */
@@ -223,7 +230,6 @@ object RddPartitioner {
       
       return myrdd
     }
-
     
     
     /**
