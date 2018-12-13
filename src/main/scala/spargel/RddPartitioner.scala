@@ -15,7 +15,7 @@ object RddPartitioner {
     /*
      * Get the current SparkSession when this object is instantiated.
      */
-    val spark = SparkSession.builder().getOrCreate()
+    //val spark = SparkSession.builder().getOrCreate()
 
     /**
      * main()
@@ -40,7 +40,7 @@ object RddPartitioner {
       //myrdd.mapPartitions(f).collect()
 
       printPartitionHostsMap(myrdd).collect
-      hostnameWorkloader(myrdd, TimedArrayWorkloads.randomSquareWorkload)
+      WorkloadRunners.hostnameWorkloader(myrdd, NodataWorkloads.timedRandomSquareWorkload)
       
       // ------------------------------------------------------------------------------------------
       
@@ -50,72 +50,9 @@ object RddPartitioner {
       val mybigrdd = getBigZeroRdd(sc, num_partitions, partiton_size).persist(DISK_ONLY)
       
       printPartitionHostsMap(mybigrdd).collect
-      hostnameWorkloader(mybigrdd, TimedArrayWorkloads.randomSquareWorkload)
+      WorkloadRunners.hostnameWorkloader(mybigrdd, NodataWorkloads.timedRandomSquareWorkload)
       
     }
-    
-    
-    /**
-     * Run a time-limited workload on every entry of an RDD.
-     * The runtime of each task depends on the hostname of the worker it runs
-     * on.
-     * The workload must be a timed workload taking arguments (A,Int).
-     * 
-     * XXX This assumes a small number of hosts and that the last character of
-     *     the hostname is a number.  The runtime used will be a function of the
-     *     hostnumber.
-     *     
-     * Return an RDD containing the worker each task ran on.
-     */
-    def hostnameWorkloader[A](r:RDD[A], workload:(A,Int)=>Unit): RDD[(String,Int)] = {
-      r.map(rec => {
-        val ctx = TaskContext.get()
-        val stageId = ctx.stageId
-        val partId = ctx.partitionId
-        val hostname = java.net.InetAddress.getLocalHost().getHostName()
-        val hostnum = hostname.last.toInt - '0'.toInt
-        val runtime = hostnum*hostnum*hostnum //*hostnum*hostnum
-        workload(rec,runtime)
-        (hostname, partId)
-      })
-    }
-    
-    
-    /**
-     * Run a workload on every entry of an RDD.
-     * The workload takes a single argument of type (A).
-     * Return a pair RDD whose keys are the worker names, and values
-     * are task IDs that ran on that worker.
-     */
-    def workloader[A,B](r:RDD[A], workload:A=>B): RDD[(String,Int)] = {
-      r.map(rec => {
-        val ctx = TaskContext.get()
-        val stageId = ctx.stageId
-        val partId = ctx.partitionId
-        val hostname = java.net.InetAddress.getLocalHost().getHostName()
-        workload(rec)
-        (hostname, partId)
-      })
-    }
-    
-    
-    /**
-     * Run a workload on every entry of an RDD.
-     * The workload to run will depend on the worker doing the processing.
-     * Return a pair RDD whose keys are the worker names, and values
-     * are task IDs that ran on that worker.
-     */
-    def hybridWorkloader[A,B](r:RDD[A], workloads:Map[String,(A => B)], defaultWorkload:(A => B)): RDD[(String,Int)] = {
-      r.map(rec => {
-        val ctx = TaskContext.get()
-        val stageId = ctx.stageId
-        val partId = ctx.partitionId
-        val hostname = java.net.InetAddress.getLocalHost().getHostName()
-        workloads.getOrElse(hostname, defaultWorkload)(rec)
-        (hostname, partId)
-      })
-    }
-
     
     
     /**
