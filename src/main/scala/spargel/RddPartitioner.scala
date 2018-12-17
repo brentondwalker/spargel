@@ -1,14 +1,14 @@
 package spargel
 
+import logging.LogListener
 import org.apache.spark.SparkContext
-import org.apache.spark.SparkContext._
 import org.apache.spark.SparkConf
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.functions._
-import org.apache.spark.sql.{Dataset, Row, SparkSession, types}
 import org.apache.spark.storage.StorageLevel._
-import org.apache.spark.Partition
 import org.apache.spark.TaskContext
+import org.apache.spark.sql._
+import org.apache.spark.sql.SparkSession
+
 import scala.math.random
 
 object RddPartitioner {
@@ -22,36 +22,51 @@ object RddPartitioner {
      */
     def main(args: Array[String]) {
       val numcores = 100
-      
-      val conf = new SparkConf()
-	    .setAppName("RddPartitioner")
-	    .set("spark.cores.max", "100")
-	    val sc = new SparkContext(conf)
-      sc.getConf.get("spark.locality.wait")
-            
-      val myrdd = getBigZeroRdd(sc, 10, 1).persist(DISK_ONLY)
+
+      /**
+        * Adding spargel jar to spark config seems to be necessary
+        * to be able using functions of it in executors.
+        */
+      val sparkSession = SparkSession.builder
+        .master("spark://172.23.27.10:7077")
+        .appName("RddPartitioner")
+        .config("spark.cores.max", "100")
+        .config("spark.jars", "target/scala-2.11/spargel_2.11-1.0.jar")
+        .getOrCreate()
+      val logListener = new LogListener
+      sparkSession.sparkContext.addSparkListener(logListener)
+//      sc.getConf.get("spark.locality.wait")
+//      val sqlContext = new SQLContext(sc)
+      import sparkSession.implicits._
+
+      val myrdd = getBigZeroRdd(sparkSession.sparkContext, 10, 1)
+        .persist(DISK_ONLY)
 
       myrdd.getNumPartitions
       val myparts = myrdd.partitions
       val p = myparts(0)
       myrdd.preferredLocations(p)
-      
+
       //def f(x:Iterator[Partition]):String = { yield hostname }
       //myrdd.mapPartitions(f).collect()
 
       printPartitionHostsMap(myrdd).collect
       WorkloadRunners.hostnameWorkloader(myrdd, NodataWorkloads.timedRandomSquareWorkload)
-      
+
       // ------------------------------------------------------------------------------------------
-      
-      val partiton_size = 1024*1024*1024
-      val num_partitions = 10
-      
-      val mybigrdd = getBigZeroRdd(sc, num_partitions, partiton_size).persist(DISK_ONLY)
-      
+
+      val partiton_size = 1024*1024*128
+      val num_partitions = 5
+
+      val mybigrdd = getBigZeroRdd(sparkSession.sparkContext, num_partitions, partiton_size)
+        .persist(DISK_ONLY)
+
       printPartitionHostsMap(mybigrdd).collect
       WorkloadRunners.hostnameWorkloader(mybigrdd, NodataWorkloads.timedRandomSquareWorkload)
-      
+      WorkloadRunners.workloader(mybigrdd, ByteArrayWorkloads.IterativeMaxWorkload)
+      WorkloadRunners.workloader(mybigrdd, ByteArrayWorkloads.IterativeMaxWorkload)
+      sparkSession.sparkContext.removeSparkListener(logListener)
+      logListener.getTaskMetrics().toDF.orderBy("taskId").show
     }
     
     
