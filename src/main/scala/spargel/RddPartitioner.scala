@@ -9,6 +9,11 @@ import org.apache.spark.sql.{Dataset, Row, SparkSession, types}
 import org.apache.spark.storage.StorageLevel._
 import org.apache.spark.Partition
 import org.apache.spark.TaskContext
+import org.apache.spark.SparkEnv
+import org.apache.spark.storage.BlockManagerMaster
+import org.apache.spark.storage.BlockManager
+import org.apache.spark.storage.RDDBlockId
+import org.apache.spark.storage.StorageLevel
 import scala.math.random
 
 object RddPartitioner {
@@ -39,7 +44,7 @@ object RddPartitioner {
       //def f(x:Iterator[Partition]):String = { yield hostname }
       //myrdd.mapPartitions(f).collect()
 
-      printPartitionHostsMap(myrdd).collect
+      printPartitionHosts(myrdd)
       WorkloadRunners.hostnameWorkloader(myrdd, NodataWorkloads.timedRandomSquareWorkload)
       
       // ------------------------------------------------------------------------------------------
@@ -49,7 +54,7 @@ object RddPartitioner {
       
       val mybigrdd = getBigZeroRdd(sc, num_partitions, partiton_size).persist(DISK_ONLY)
       
-      printPartitionHostsMap(mybigrdd).collect
+      printPartitionHosts(mybigrdd)
       WorkloadRunners.hostnameWorkloader(mybigrdd, NodataWorkloads.timedRandomSquareWorkload)
       
     }
@@ -94,7 +99,7 @@ object RddPartitioner {
      * 
      * The size of the partitions can be set based on the worker where the
      * partition is being created.
-     * The partionSize aparameter should give the desired partition size (in
+     * The partionSize parameter should give the desired partition size (in
      * Bytes) for partitions created on each host.  For any host not listed in
      * the Map, it will use a default partition size of 1.
      */
@@ -127,11 +132,11 @@ object RddPartitioner {
      * 
      * The size of the partitions can be set based on the worker where the
      * partition is being created.
-     * The partionSize aparameter should give the desired partition size (in
+     * The partionSize parameter should give the desired partition size (in
      * Bytes) for partitions created on each host.  For any host not listed in
      * the Map, it will use a default partition size of 1.
      * 
-     * We want the partitons to be evenly distributed across the workers, even
+     * We want the partitions to be evenly distributed across the workers, even
      * if they are irregular in their sizes.  Therefore we need the
      * partitions-creation tasks to take equal amounts of time.  Add a
      * spin-waiting component to this so all tasks take the same time.
@@ -170,37 +175,90 @@ object RddPartitioner {
     
     
     /**
+     * Generate a huge RDD.  Each record is a tuple containing an integer index
+     * and a (huge) array of random bytes.  This makes the content of the arrays
+     * incompressible.
+     * 
+     * The size of the partitions can be set based on the executor ID where the
+     * partition is being created.
+     * The partionSize parameter should give the desired partition size (in
+     * Bytes) for partitions created on each host.  For any host not listed in
+     * the Map, it will use a default partition size of 1.
+     * 
+     * We want the partitions to be evenly distributed across the workers, even
+     * if they are irregular in their sizes.  Therefore we need the
+     * partitions-creation tasks to take equal amounts of time.  Add a
+     * spin-waiting component to this so all tasks take the same time.
+     */
+    def getBigRandomExecIdRddTimed(sc:SparkContext, numPartitions:Int, runtime:Int, partitionSize:Map[String,Int], defaultPartitionSize:Int=1):RDD[(Int,Array[Byte])] = {
+
+      val tmprdd = sc.parallelize(1 to numPartitions, numPartitions).map { i =>
+        i
+      }.persist
+      
+      val myrdd = tmprdd.mapPartitionsWithIndex((i,it) => {
+        val startTime = java.lang.System.currentTimeMillis()
+        val targetStopTime = startTime + runtime
+        
+        val execId = SparkEnv.get.executorId
+        val psize = partitionSize.getOrElse(execId, defaultPartitionSize)
+        val maxsize = partitionSize.valuesIterator.max
+        
+        val mypart = List((i, Array.fill[Byte](psize)((scala.util.Random.nextInt(256) - 128).toByte))).iterator
+        
+        // waste time so all tasks take the same ammt of time
+        while (java.lang.System.currentTimeMillis() < targetStopTime) {
+            val xx = random * 2 - 1
+            val yy = random * 2 - 1
+        }
+
+        mypart
+      }, preservesPartitioning=true)
+      
+      return myrdd
+    }
+
+    
+    /**
      * For each partition print out the worker where it is stored.
-     * Running on a cluster this will go to stdout on the workers.
      */
     def printPartitionHosts[A](r:RDD[A]) {
-      r.foreachPartition( _ => {
-        val ctx = TaskContext.get()
-        val stageId = ctx.stageId
-        val partId = ctx.partitionId
-        val hostname = java.net.InetAddress.getLocalHost().getHostName()
-        println(s"Stage: $stageId, Partition: $partId, Host: $hostname")
-      })
+      val bmm = SparkEnv.get.blockManager.master
+      val rddId = r.id
+      val nparts = r.getNumPartitions
+      
+      for (i <- 0 until nparts) {
+        val mm = bmm.getBlockStatus(RDDBlockId(rddId,i), true)
+        for ((k,v) <- mm) {
+            println(rddId+"\t"+i+"\texecId="+k.executorId+"\thost="+k.host+"\tmemSize="+v.memSize+"\tdiskSize="+v.diskSize+"\tstorageLevel="+v.storageLevel)
+        }
+      }
     }
     
     
     /**
-     * For each partition record the worker where it is stored and return the
-     * result as an pair RDD.  The key is the hostname, the value is a list of
-     * partitions on that host.
+     * Get data on the executors/hosts where each partition of an RDD is stored.
+     * Returns an array of lists of tuples containing:
+     * (rddId, partitionId, executorId, hostIP, memsize, disksize, storagelevel)
+     * 
+     * Note that a partition /may/ be stored multiple places.
      */
-    def printPartitionHostsMap[A](r:RDD[A]): RDD[(String,Iterable[Int])] = {
-      return r.mapPartitions( _ => {
-        val ctx = TaskContext.get()
-        val stageId = ctx.stageId
-        val partId = ctx.partitionId
-        val hostname = java.net.InetAddress.getLocalHost().getHostName()
-        //println(s"Stage: $stageId, Partition: $partId, Host: $hostname")
-        List((hostname, partId)).iterator
-      }, preservesPartitioning=true).groupByKey()
+    def getPartitionHosts[A](r:RDD[A]): Array[Iterable[(Int, Int, String, String, Long, Long, StorageLevel)]] = {
+      val bmm = SparkEnv.get.blockManager.master
+      val rddId = r.id
+      val nparts = r.getNumPartitions
+      
+      (0 until nparts).toArray
+        .map( i => bmm.getBlockStatus(RDDBlockId(rddId,i), true)
+                      .map( x => (rddId,
+                                  i,
+                                  x._1.executorId,
+                                  x._1.host,
+                                  x._2.memSize,
+                                  x._2.diskSize,
+                                  x._2.storageLevel) ))
     }
-    
-    
+        
 }
 
 
