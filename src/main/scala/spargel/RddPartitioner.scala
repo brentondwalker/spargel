@@ -45,7 +45,11 @@ object RddPartitioner {
       //myrdd.mapPartitions(f).collect()
 
       printPartitionHosts(myrdd)
-      WorkloadRunners.hostnameWorkloader(myrdd, NodataWorkloads.timedRandomSquareWorkload)
+      val workloads = Map("0" -> ByteArrayWorkloads.timedRandomMatrixWorkloadGenerator(2500),
+                          "1" -> ByteArrayWorkloads.timedRandomMatrixWorkloadGenerator(5000),
+                          "2" -> ByteArrayWorkloads.RandomElementWorkload)
+      WorkloadRunners.hybridWorkloader(myrdd, workloads, ByteArrayWorkloads.RandomElementWorkload)
+        .groupBy(_._2).collect.foreach(x => { println("\nExecutor: "+x._1);  x._2.foreach(println) })
       
       // ------------------------------------------------------------------------------------------
       
@@ -55,7 +59,8 @@ object RddPartitioner {
       val mybigrdd = getBigZeroRdd(sc, num_partitions, partiton_size).persist(DISK_ONLY)
       
       printPartitionHosts(mybigrdd)
-      WorkloadRunners.hostnameWorkloader(mybigrdd, NodataWorkloads.timedRandomSquareWorkload)
+      WorkloadRunners.hybridWorkloader(mybigrdd, workloads, ByteArrayWorkloads.RandomElementWorkload)
+        .groupBy(_._2).collect.foreach(x => { println("\nExecutor: "+x._1);  x._2.foreach(println) })
       
     }
     
