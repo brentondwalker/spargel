@@ -1,17 +1,7 @@
 package spargel
 
-import org.apache.spark.SparkContext
-import org.apache.spark.SparkContext._
-import org.apache.spark.SparkConf
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.functions._
-import org.apache.spark.sql.{Dataset, Row, SparkSession, types}
-import org.apache.spark.storage.StorageLevel._
-import org.apache.spark.Partition
 import org.apache.spark.TaskContext
-import scala.math.random
-import org.apache.spark.storage.BlockManagerMaster
-import org.apache.spark.storage.BlockManager
 import org.apache.spark.storage.RDDBlockId
 import org.apache.spark.SparkEnv
 import Workloads._
@@ -39,23 +29,6 @@ import Workloads._
  * This way we can easily control the size and content of each partition.
  */
 object WorkloadRunners {
-        
-    /**
-     * Run a workload on every entry of an RDD.
-     * The workload takes a single argument of type (A).
-     * Return a pair RDD whose keys are the worker names, and values
-     * are task IDs that ran on that worker.
-     */
-    def OLDworkloader[A,B](r:RDD[A], wkld:Workload[A,B]): RDD[(String,Int)] = {
-      r.map(rec => {
-        val ctx = TaskContext.get()
-        val stageId = ctx.stageId
-        val partId = ctx.partitionId
-        val hostname = java.net.InetAddress.getLocalHost().getHostName()
-        wkld(rec)
-        (hostname, partId)
-      })
-    }
     
     /**
      * Run a workload on every entry of an RDD.

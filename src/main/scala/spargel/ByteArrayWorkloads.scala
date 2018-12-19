@@ -1,15 +1,5 @@
 package spargel
 
-import org.apache.spark.SparkContext
-import org.apache.spark.SparkContext._
-import org.apache.spark.SparkConf
-import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.functions._
-import org.apache.spark.sql.{Dataset, Row, SparkSession, types}
-import org.apache.spark.storage.StorageLevel._
-import org.apache.spark.Partition
-import org.apache.spark.TaskContext
-import scala.math.random
 import Workloads._
 
 /**

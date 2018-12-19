@@ -1,15 +1,5 @@
 package spargel
 
-import org.apache.spark.SparkContext
-import org.apache.spark.SparkContext._
-import org.apache.spark.SparkConf
-import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.functions._
-import org.apache.spark.sql.{Dataset, Row, SparkSession, types}
-import org.apache.spark.storage.StorageLevel._
-import org.apache.spark.Partition
-import org.apache.spark.TaskContext
-import scala.math.random
 import Workloads._
 
 /**
@@ -69,8 +59,8 @@ object NodataWorkloads extends Serializable {
       val targetStopTime = startTime + 1000*(runtime)
       
       while (java.lang.System.currentTimeMillis() < targetStopTime) {
-        val xx = random * 2 - 1
-        val yy = random * 2 - 1
+        val xx = scala.math.random * 2 - 1
+        val yy = scala.math.random * 2 - 1
       }
     }
   }

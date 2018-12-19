@@ -1,70 +1,15 @@
 package spargel
 
 import org.apache.spark.SparkContext
-import org.apache.spark.SparkContext._
-import org.apache.spark.SparkConf
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.functions._
-import org.apache.spark.sql.{Dataset, Row, SparkSession, types}
-import org.apache.spark.storage.StorageLevel._
-import org.apache.spark.Partition
 import org.apache.spark.TaskContext
 import org.apache.spark.SparkEnv
-import org.apache.spark.storage.BlockManagerMaster
-import org.apache.spark.storage.BlockManager
 import org.apache.spark.storage.RDDBlockId
 import org.apache.spark.storage.StorageLevel
 import scala.math.random
 
 object RddPartitioner {
-    /*
-     * Get the current SparkSession when this object is instantiated.
-     */
-    //val spark = SparkSession.builder().getOrCreate()
 
-    /**
-     * main()
-     */
-    def main(args: Array[String]) {
-      val numcores = 100
-      
-      val conf = new SparkConf()
-	    .setAppName("RddPartitioner")
-	    .set("spark.cores.max", "100")
-	    val sc = new SparkContext(conf)
-      sc.getConf.get("spark.locality.wait")
-            
-      val myrdd = getBigZeroRdd(sc, 10, 1).persist(DISK_ONLY)
-
-      myrdd.getNumPartitions
-      val myparts = myrdd.partitions
-      val p = myparts(0)
-      myrdd.preferredLocations(p)
-      
-      //def f(x:Iterator[Partition]):String = { yield hostname }
-      //myrdd.mapPartitions(f).collect()
-
-      printPartitionHosts(myrdd)
-      val workloads = Map("0" -> ByteArrayWorkloads.timedRandomMatrixWorkloadGenerator(2500),
-                          "1" -> ByteArrayWorkloads.timedRandomMatrixWorkloadGenerator(5000),
-                          "2" -> ByteArrayWorkloads.RandomElementWorkload)
-      WorkloadRunners.hybridWorkloader(myrdd, workloads, ByteArrayWorkloads.RandomElementWorkload)
-        .groupBy(_._2).collect.foreach(x => { println("\nExecutor: "+x._1);  x._2.foreach(println) })
-      
-      // ------------------------------------------------------------------------------------------
-      
-      val partiton_size = 1024*1024*1024
-      val num_partitions = 10
-      
-      val mybigrdd = getBigZeroRdd(sc, num_partitions, partiton_size).persist(DISK_ONLY)
-      
-      printPartitionHosts(mybigrdd)
-      WorkloadRunners.hybridWorkloader(mybigrdd, workloads, ByteArrayWorkloads.RandomElementWorkload)
-        .groupBy(_._2).collect.foreach(x => { println("\nExecutor: "+x._1);  x._2.foreach(println) })
-      
-    }
-    
-    
     /**
      * Generate a huge RDD.  Each record is a tuple containing an integer index
      * and a (huge) array of zeros.
