@@ -59,7 +59,8 @@ class LogListener extends SparkListener {
       logTask.taskInfo = Some(taskEnd.taskInfo)
       logTask.taskMetrics = Some(taskEnd.taskMetrics)
       logTask.submissionTime = stage.stageInfo.get.submissionTime
-      stage.tasks += logTask.taskInfo.get.taskId -> logTask
+      //stage.tasks += logTask.taskInfo.get.taskId -> logTask
+      stage.tasks += logTask.taskInfo.get.index -> logTask
     }
   }
 
@@ -69,7 +70,7 @@ class LogListener extends SparkListener {
     for(stageId <- job.get.stageIds) {
       val stage = stageIdToStage.get(stageId)
       if(stage.nonEmpty) {
-        for((taskId, task) <- stage.get.tasks) {
+        for((taskIndex, task) <- stage.get.tasks) {
           task.jobEnd = Some(jobEnd.time)
         }
       }
@@ -91,8 +92,8 @@ class LogListener extends SparkListener {
   def getTaskMetrics(): scala.collection.mutable.Seq[FlatTask] = {
     var tasks:scala.collection.mutable.Seq[FlatTask] = scala.collection.mutable.Seq[FlatTask]()
     for((stageId,v) <- stageIdToStage) {
-      for((taskId,task) <- v.tasks) {
-        tasks :+= FlatTask(taskId, stageId, task.taskInfo.get.host,
+      for((taskIndex,task) <- v.tasks) {
+        tasks :+= FlatTask(taskIndex, task.taskInfo.get.taskId, stageId, task.taskInfo.get.host,
           task.taskInfo.get.taskLocality == TaskLocality.PROCESS_LOCAL,
           task.jobEnd.get - task.submissionTime.get,
           task.taskInfo.get.launchTime - task.submissionTime.get,
@@ -108,29 +109,5 @@ class LogListener extends SparkListener {
     tasks
   }
 
-  // Following inner classes keeps track of jobs, stages and tasks.
-  case class LogJob(jobId:Int){
-    var submissionTime: Option[Long] = None
-    var numStages: Int = 0
-    var stageIds:Seq[Int] = Seq.empty[Int]
-    var stageInfos:Seq[StageInfo] = Seq.empty[StageInfo]
-    // time in SparkListenerJobEnd. TODO check what time is meant
-    var time: Option[Long] = None
-    override def toString = { "LogJob("+submissionTime.getOrElse("None")+", "+numStages+", "+stageIds+", "+stageInfos+", "+time.getOrElse("None")+")" }
-  }
 
-  case class LogTask(stageId: Int) {
-    var taskInfo: Option[TaskInfo] = None
-    var taskMetrics: Option[Any] = None
-    var submissionTime: Option[Long] = None // Represents the time the stage is submitted
-    var jobEnd: Option[Long] = None
-    override def toString = { "LogTask("+taskInfo.getOrElse("None")+", "+taskMetrics.getOrElse("None")+", "+submissionTime.getOrElse("None")+", "+jobEnd.getOrElse("None")+")" }
-  }
-
-  case class LogStage(stageId: Int) {
-    var stageInfo: Option[StageInfo] = None
-    var job: Option[LogJob] = None
-    var tasks: scala.collection.mutable.Map[Long, LogTask] = scala.collection.mutable.Map.empty[Long, LogTask]
-    override def toString = { "LogStage("+stageInfo.getOrElse("None")+", "+job.getOrElse("None")+", "+tasks+")" }
-  }
 }

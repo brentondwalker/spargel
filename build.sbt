@@ -10,10 +10,10 @@ scalaVersion := "2.11.8"
   */
 fork         := true
 
-libraryDependencies += "org.apache.spark" %% "spark-core"  % "2.4.0"
-libraryDependencies += "org.apache.spark" %% "spark-sql"   % "2.4.0"
-libraryDependencies += "org.apache.spark" % "spark-mllib-local_2.11" % "2.4.0"
-libraryDependencies += "org.apache.spark" % "spark-mllib_2.11" % "2.4.0" % "provided"
+libraryDependencies += "org.apache.spark" %% "spark-core"  % "2.3.2"
+libraryDependencies += "org.apache.spark" %% "spark-sql"   % "2.3.2"
+libraryDependencies += "org.apache.spark" % "spark-mllib-local_2.11" % "2.3.2"
+libraryDependencies += "org.apache.spark" % "spark-mllib_2.11" % "2.3.2" % "provided"
 libraryDependencies += "org.vegas-viz" % "vegas-spark_2.11" % "0.3.11"
 libraryDependencies += "org.vegas-viz" % "vegas-macros_2.11" % "0.3.11"
 

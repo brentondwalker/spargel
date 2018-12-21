@@ -37,8 +37,7 @@ object SpargelMain {
       val workloads = Map("0" -> ByteArrayWorkloads.timedRandomMatrixWorkloadGenerator(2500),
                           "1" -> ByteArrayWorkloads.timedRandomMatrixWorkloadGenerator(5000),
                           "2" -> ByteArrayWorkloads.RandomElementWorkload)
-      WorkloadRunners.hybridWorkloader(myrdd, workloads, ByteArrayWorkloads.RandomElementWorkload)
-        .groupBy(_._2).collect.foreach(x => { println("\nExecutor: "+x._1);  x._2.foreach(println) })
+      WorkloadRunners.hybridWorkloader(myrdd, workloads, ByteArrayWorkloads.RandomElementWorkload).show
       
       // ------------------------------------------------------------------------------------------
       
@@ -48,8 +47,7 @@ object SpargelMain {
       val mybigrdd = getBigZeroRdd(sc, num_partitions, partiton_size).persist(DISK_ONLY)
       
       printPartitionHosts(mybigrdd)
-      WorkloadRunners.hybridWorkloader(mybigrdd, workloads, ByteArrayWorkloads.RandomElementWorkload)
-        .groupBy(_._2).collect.foreach(x => { println("\nExecutor: "+x._1);  x._2.foreach(println) })
+      WorkloadRunners.hybridWorkloader(mybigrdd, workloads, ByteArrayWorkloads.RandomElementWorkload).show
       
     }
 }
