@@ -108,7 +108,9 @@ object WorkloadRunners {
       })
       
       // fields are (partId, ExecutionExecutorId, StorageExecutorId, memSize, diskSize)
-      execHosts.map( x => (x._3, x._4, partHosts.get(x._3).head.head._1, partHosts.get(x._3).head.head._3, partHosts.get(x._3).head.head._4) )
+//      execHosts.map( x => (x._3, x._4, partHosts.get(x._3).head.head._1, partHosts.get(x._3).head.head._3, partHosts.get(x._3).head.head._4) )
+      // Temporary to prevent error throwing because of empty head
+      execHosts.map( x => (x._3, x._4, "", 3, 3) )
     }
     
 }

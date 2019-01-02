@@ -87,17 +87,21 @@ class LogListener extends SparkListener {
     var tasks:Seq[FlatTask] = Seq[FlatTask]()
     for((stageId,v) <- stageIdToStage) {
       for((taskId,task) <- v.tasks) {
-        tasks :+= FlatTask(taskId, stageId, task.taskInfo.get.host,
-          task.taskInfo.get.taskLocality == TaskLocality.PROCESS_LOCAL,
-          task.jobEnd.get - task.submissionTime.get,
-          task.taskInfo.get.launchTime - task.submissionTime.get,
-          task.taskInfo.get.finishTime - task.taskInfo.get.launchTime,
-          task.taskMetrics.get.asInstanceOf[TaskMetrics].executorDeserializeTime,
-          0.0, task.taskMetrics.get.asInstanceOf[TaskMetrics].executorCpuTime,
-          0 // Represents the time needed to read a RDD. Only possible if using
-            // a modified spark version
-//          task.taskMetrics.get.asInstanceOf[TaskMetrics].inputMetrics.readTime
-        )
+        if(task.taskInfo.nonEmpty) {
+          val readParams = task.taskMetrics.get.asInstanceOf[TaskMetrics].inputMetrics.readParams.headOption
+          tasks :+= FlatTask(taskId, stageId, task.taskInfo.get.host,
+            task.taskInfo.get.taskLocality == TaskLocality.PROCESS_LOCAL,
+            task.jobEnd.getOrElse(0L) - task.submissionTime.getOrElse(0L),
+            task.taskInfo.get.launchTime - task.submissionTime.getOrElse(0L),
+            task.taskInfo.get.finishTime - task.taskInfo.get.launchTime,
+            task.taskMetrics.get.asInstanceOf[TaskMetrics].executorDeserializeTime,
+            0.0, task.taskMetrics.get.asInstanceOf[TaskMetrics].executorCpuTime,
+            task.taskMetrics.get.asInstanceOf[TaskMetrics].inputMetrics.readTime,
+            if (readParams.nonEmpty) readParams.get.locationExecId else "",
+            if (readParams.nonEmpty) readParams.get.readMethod.toString else "",
+            if (readParams.nonEmpty) readParams.get.cachedBlock else false
+          )
+        }
       }
     }
     tasks
