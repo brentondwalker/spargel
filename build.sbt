@@ -1,7 +1,7 @@
 name         := "spargel"
 version      := "1.0"
 organization := "ikt"
-scalaVersion := "2.11.12"
+scalaVersion := "2.11.8"
 
 /**
   * Makes it possible to run the application from sbt-shell.

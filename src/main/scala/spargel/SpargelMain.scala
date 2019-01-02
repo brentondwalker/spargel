@@ -32,9 +32,6 @@ object SpargelMain {
         .config("spark.executor.memory", "10g")
         .config("spark.jars", "target/scala-2.11/spargel_2.11-1.0.jar")
         .getOrCreate()
-      val logListener = new LogListener
-      sparkSession.sparkContext.addSparkListener(logListener)
-      import sparkSession.implicits._
 
       val myrdd = getBigZeroRdd(sparkSession.sparkContext, 10, 1).persist(DISK_ONLY)
 
@@ -42,25 +39,23 @@ object SpargelMain {
       val myparts = myrdd.partitions
       val p = myparts(0)
       myrdd.preferredLocations(p)
-
+      
       printPartitionHosts(myrdd)
       val workloads = Map("0" -> ByteArrayWorkloads.timedRandomMatrixWorkloadGenerator(2500),
                           "1" -> ByteArrayWorkloads.timedRandomMatrixWorkloadGenerator(5000),
                           "2" -> ByteArrayWorkloads.RandomElementWorkload)
-      WorkloadRunners.hybridWorkloader(myrdd, workloads, ByteArrayWorkloads.RandomElementWorkload)
-        .groupBy(_._2).collect.foreach(x => { println("\nExecutor: "+x._1);  x._2.foreach(println) })
-
+      WorkloadRunners.hybridWorkloader(myrdd, workloads, ByteArrayWorkloads.RandomElementWorkload).show
+      
       // ------------------------------------------------------------------------------------------
-
-      val partiton_size = 1024*1024*128
+      
+      val partiton_size = 1024*1024*1024
       val num_partitions = 10
-
-      val mybigrdd = getBigZeroRdd(sparkSession.sparkContext, num_partitions, partiton_size).persist(DISK_ONLY)
-
+      
+      val mybigrdd = getBigZeroRdd(sc, num_partitions, partiton_size).persist(DISK_ONLY)
+      
       printPartitionHosts(mybigrdd)
-      WorkloadRunners.hybridWorkloader(mybigrdd, workloads, ByteArrayWorkloads.RandomElementWorkload)
-        .groupBy(_._2).collect.foreach(x => { println("\nExecutor: "+x._1);  x._2.foreach(println) })
-
+      WorkloadRunners.hybridWorkloader(mybigrdd, workloads, ByteArrayWorkloads.RandomElementWorkload).show
+      
     }
 }
 
