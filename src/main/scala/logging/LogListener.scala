@@ -8,9 +8,14 @@ import org.apache.spark.scheduler._
   * and will track the metrics of executed tasks.
   */
 class LogListener extends SparkListener {
-  var jobIdsToJobs: Map[Int, LogJob] = Map.empty[Int, LogJob]
-  var stageIdToStage: Map[Int, LogStage] = Map.empty[Int, LogStage]
-  var jobIdToStageIds: Map[Int, Seq[Int]] = Map.empty[Int, Seq[Int]]
+  var jobIdsToJobs: scala.collection.mutable.Map[Int, LogJob] = scala.collection.mutable.Map.empty[Int, LogJob]
+  var stageIdToStage: scala.collection.mutable.Map[Int, LogStage] = scala.collection.mutable.Map.empty[Int, LogStage]
+  var jobIdToStageIds: scala.collection.mutable.Map[Int, Seq[Int]] = scala.collection.mutable.Map.empty[Int, Seq[Int]]
+  
+  // accessors for resulting data return immutable objects
+  def getJobData() = { scala.collection.immutable.Map() ++ jobIdsToJobs }
+  def getStageData() = { scala.collection.immutable.Map() ++ stageIdToStage }
+  def getJobStages() = { scala.collection.immutable.Map() ++ jobIdToStageIds }
 
   override def onJobStart(jobStart: SparkListenerJobStart) {
     val tmpJob = new LogJob(jobStart.jobId)
@@ -83,8 +88,8 @@ class LogListener extends SparkListener {
     * converted to a spark DataFrame.
     * @return Sequence of case class FlatTask
     */
-  def getTaskMetrics(): Seq[FlatTask] = {
-    var tasks:Seq[FlatTask] = Seq[FlatTask]()
+  def getTaskMetrics(): scala.collection.mutable.Seq[FlatTask] = {
+    var tasks:scala.collection.mutable.Seq[FlatTask] = scala.collection.mutable.Seq[FlatTask]()
     for((stageId,v) <- stageIdToStage) {
       for((taskId,task) <- v.tasks) {
         if(task.taskInfo.nonEmpty) {
@@ -115,6 +120,7 @@ class LogListener extends SparkListener {
     var stageInfos:Seq[StageInfo] = Seq.empty[StageInfo]
     // time in SparkListenerJobEnd. TODO check what time is meant
     var time: Option[Long] = None
+    override def toString = { "LogJob("+submissionTime.getOrElse("None")+", "+numStages+", "+stageIds+", "+stageInfos+", "+time.getOrElse("None")+")" }
   }
 
   case class LogTask(stageId: Int) {
@@ -122,11 +128,13 @@ class LogListener extends SparkListener {
     var taskMetrics: Option[Any] = None
     var submissionTime: Option[Long] = None // Represents the time the stage is submitted
     var jobEnd: Option[Long] = None
+    override def toString = { "LogTask("+taskInfo.getOrElse("None")+", "+taskMetrics.getOrElse("None")+", "+submissionTime.getOrElse("None")+", "+jobEnd.getOrElse("None")+")" }
   }
 
   case class LogStage(stageId: Int) {
     var stageInfo: Option[StageInfo] = None
     var job: Option[LogJob] = None
-    var tasks: Map[Long, LogTask] = Map.empty[Long, LogTask]
+    var tasks: scala.collection.mutable.Map[Long, LogTask] = scala.collection.mutable.Map.empty[Long, LogTask]
+    override def toString = { "LogStage("+stageInfo.getOrElse("None")+", "+job.getOrElse("None")+", "+tasks+")" }
   }
 }
