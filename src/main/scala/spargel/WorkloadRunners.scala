@@ -190,7 +190,7 @@ object WorkloadRunners {
       // classes are not Serializable, so they cannot be used in the RDD.map below.
       // XXX- knowing this we could change the logging package to extract the data
       //      into something more convenient
-      val taskData = stageData.get(stageId).get.tasks.map{ case (k:Int,v:LogTask) => {
+      val taskData = stageData(stageId).tasks.map{ case (k:Int,v:LogTask) => {
         val taskInfo = v.taskInfo.get
         val taskMetrics = v.taskMetrics.get
         (taskInfo.index , FlatTaskDetail(stageId,
@@ -228,7 +228,7 @@ object WorkloadRunners {
             taskData(x._3).index,
             taskData(x._3).launchTime,
             taskData(x._3).taskId,
-            taskData(x._3).taskLocality.toString(),
+            taskData(x._3).taskLocality.toString,
             taskData(x._3).diskBytesSpilled,
             taskData(x._3).executorCpuTime,
             taskData(x._3).executorDeserializeCpuTime,
@@ -285,7 +285,7 @@ object WorkloadRunners {
 
       // force the workload to actually execute
       execHosts.count
-      
+
       // execute the workload, and have each task record where
       // (and later how long) it executes
       val partHosts = (0 until nparts).toArray
@@ -309,7 +309,7 @@ object WorkloadRunners {
       // classes are not Serializable, so they cannot be used in the RDD.map below.
       // XXX- knowing this we could change the logging package to extract the data
       //      into something more convenient
-      val taskData = stageData.get(stageId).get.tasks.map{ case (k:Int,v:LogTask) => {
+      val taskData = stageData(stageId).tasks.map{ case (k:Int,v:LogTask) => {
         val taskInfo = v.taskInfo.get
         val taskMetrics = v.taskMetrics.get
         (taskInfo.index , FlatTaskDetail(stageId,
@@ -321,7 +321,7 @@ object WorkloadRunners {
                                         taskInfo.id,
                                         taskInfo.index,
                                         taskInfo.launchTime,
-                                        taskInfo.taskLocality.toString(),
+                                        taskInfo.taskLocality.toString,
                                         taskMetrics.diskBytesSpilled,
                                         taskMetrics.executorCpuTime,
                                         taskMetrics.executorDeserializeCpuTime,
@@ -347,7 +347,7 @@ object WorkloadRunners {
             taskData(x._3).index,
             taskData(x._3).launchTime,
             taskData(x._3).taskId,
-            taskData(x._3).taskLocality.toString(),
+            taskData(x._3).taskLocality.toString,
             taskData(x._3).diskBytesSpilled,
             taskData(x._3).executorCpuTime,
             taskData(x._3).executorDeserializeCpuTime,

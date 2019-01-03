@@ -44,7 +44,7 @@ object ByteArrayWorkloads extends Serializable {
    * 
    * XXX: Do we really need both of these types?
    */
-  type TimedByteArrayWorkloadGenerator = (Int => ByteArrayWorkload)
+  type TimedByteArrayWorkloadGenerator = Int => ByteArrayWorkload
   
     
     /**
@@ -52,7 +52,7 @@ object ByteArrayWorkloads extends Serializable {
      * that value as an Int.
      */
     val IterativeMaxWorkload:ByteArrayWorkload = {
-      (rec) => {
+      rec => {
         var mx:Byte = Byte.MinValue
         rec._2.foreach(x => mx = if (x > mx) x else mx)
         mx.toInt
@@ -66,8 +66,8 @@ object ByteArrayWorkloads extends Serializable {
      * bucketsort.
      */
     val SortedWorkload:ByteArrayWorkload = {
-      (rec) => {
-        rec._2.sorted.head.toInt
+      rec => {
+        rec._2.min.toInt
       }
     }
     
@@ -76,12 +76,12 @@ object ByteArrayWorkloads extends Serializable {
      * Do something quadratic.
      */
     val QuadraticCompareWorkload:ByteArrayWorkload = {
-      (rec) => {
+      rec => {
         val arr = rec._2
         var ct:Int = 0
         var i:Int = 0
         var j:Int = 0
-        for (i <- 0 until arr.length) {
+        for (i <- arr.indices) {
           for (j <- (i+1) until arr.length) {
             if (arr(i) > arr(j)) {
               ct += 1
@@ -100,7 +100,7 @@ object ByteArrayWorkloads extends Serializable {
      * This is a constant-time operation.
      */
     val RandomElementWorkload:ByteArrayWorkload = {
-      (rec) => {
+      rec => {
         val arr = rec._2
         arr(scala.util.Random.nextInt(arr.length)).toInt
       }
@@ -112,7 +112,7 @@ object ByteArrayWorkloads extends Serializable {
      * logarithmic steps.
      */
     val LogRandomWalkWorkload:ByteArrayWorkload = {
-      (rec) => {
+      rec => {
         val arr = rec._2
         var x:Int = arr.length
         var i:Int = arr.length/2
@@ -147,7 +147,7 @@ object ByteArrayWorkloads extends Serializable {
     val timedRandomMatrixWorkload:TimedByteArrayWorkload = {
       (x:(Int,Array[Byte]), runtime:Int) => {
         val startTime = java.lang.System.currentTimeMillis()
-        val targetStopTime = startTime + 1000*(runtime)
+        val targetStopTime = startTime + 1000*runtime
         val arr = x._2
         val arraySize = arr.length
         
@@ -164,7 +164,7 @@ object ByteArrayWorkloads extends Serializable {
      */
     val timedRandomMatrixWorkloadGenerator:TimedByteArrayWorkloadGenerator = {
       t => {
-        (x:(Int,Array[Byte])) => {
+        x:(Int,Array[Byte]) => {
           val startTime = java.lang.System.currentTimeMillis()
           val targetStopTime = startTime + t
           val arr = x._2

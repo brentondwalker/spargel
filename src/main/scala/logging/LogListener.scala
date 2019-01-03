@@ -18,7 +18,7 @@ class LogListener extends SparkListener {
   def getJobStages() = { scala.collection.immutable.Map() ++ jobIdToStageIds }
 
   override def onJobStart(jobStart: SparkListenerJobStart) {
-    val tmpJob = new LogJob(jobStart.jobId)
+    val tmpJob = LogJob(jobStart.jobId)
     tmpJob.submissionTime = Some(jobStart.time)
     tmpJob.numStages = jobStart.stageInfos.size
     tmpJob.stageIds = jobStart.stageIds
@@ -30,7 +30,7 @@ class LogListener extends SparkListener {
         println("Started job with already known stage id. Something must be wrong.")
       }
       else {
-        val tmpStage = new LogStage(stageId)
+        val tmpStage = LogStage(stageId)
         tmpStage.job = Some(tmpJob)
         stageIdToStage += tmpStage.stageId -> tmpStage
       }
@@ -55,7 +55,7 @@ class LogListener extends SparkListener {
       println("Stage id unknown in onTaskEnd. Should be set at this position.")
     else {
       val stage = currStage.get
-      val logTask = new LogTask(taskEnd.stageId)
+      val logTask = LogTask(taskEnd.stageId)
       logTask.taskInfo = Some(taskEnd.taskInfo)
       logTask.taskMetrics = Some(taskEnd.taskMetrics)
       logTask.submissionTime = stage.stageInfo.get.submissionTime
@@ -78,7 +78,7 @@ class LogListener extends SparkListener {
   }
 
   override def onStageSubmitted(stageSubmitted: SparkListenerStageSubmitted): Unit = {
-    val stage = new LogStage(stageSubmitted.stageInfo.stageId)
+    val stage = LogStage(stageSubmitted.stageInfo.stageId)
     stage.stageInfo = Some(stageSubmitted.stageInfo)
     this.stageIdToStage += stage.stageId -> stage
   }

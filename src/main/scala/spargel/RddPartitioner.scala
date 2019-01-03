@@ -22,7 +22,7 @@ object RddPartitioner {
         i
       }.map( i => (i,Array.fill[Byte](partitionSize)(0)) )
 
-      return mybigrdd
+      mybigrdd
     }
     
     
@@ -38,7 +38,7 @@ object RddPartitioner {
         i
       }.map( i => (i,Array.fill[Byte](partitionSize)((scala.util.Random.nextInt(256) - 128).toByte)) )
 
-      return mybigrdd
+      mybigrdd
     }
     
     
@@ -60,7 +60,7 @@ object RddPartitioner {
       }.persist
       
       val myrdd = tmprdd.mapPartitionsWithIndex((i,it) => {
-        val hostname = java.net.InetAddress.getLocalHost().getHostName()
+        val hostname = java.net.InetAddress.getLocalHost.getHostName
         val psize = partitionSize.getOrElse(hostname, defaultPartitionSize)
         val maxsize = partitionSize.valuesIterator.max
         if (maxsize > psize) {
@@ -71,7 +71,7 @@ object RddPartitioner {
       }, preservesPartitioning=true)
       
       
-      return myrdd
+      myrdd
     }
     
     
@@ -105,7 +105,7 @@ object RddPartitioner {
         //ctx.getLocalProperty("spark.executor.cores")
         val targetStopTime = startTime + runtime
         
-        val hostname = java.net.InetAddress.getLocalHost().getHostName()
+        val hostname = java.net.InetAddress.getLocalHost.getHostName
         val psize = partitionSize.getOrElse(hostname, defaultPartitionSize)
         val maxsize = partitionSize.valuesIterator.max
 
@@ -120,7 +120,7 @@ object RddPartitioner {
         mypart
       }, preservesPartitioning=true)
       
-      return myrdd
+      myrdd
     }
     
     
@@ -165,7 +165,7 @@ object RddPartitioner {
         mypart
       }, preservesPartitioning=true)
       
-      return myrdd
+      myrdd
     }
 
     

@@ -47,7 +47,7 @@ object NodataWorkloads extends Serializable {
    * 
    * XXX: Do we really need both of these types?
    */
-  type TimedNodataWorkloadGenerator = (Int => NodataWorkload)
+  type TimedNodataWorkloadGenerator = Int => NodataWorkload
   
 
   /**
@@ -56,7 +56,7 @@ object NodataWorkloads extends Serializable {
   val timedRandomSquareWorkload:TimedNodataWorkload  = {
     (x:AnyRef, runtime:Int) => {
       val startTime = java.lang.System.currentTimeMillis()
-      val targetStopTime = startTime + 1000*(runtime)
+      val targetStopTime = startTime + 1000*runtime
       
       while (java.lang.System.currentTimeMillis() < targetStopTime) {
         val xx = scala.math.random * 2 - 1
