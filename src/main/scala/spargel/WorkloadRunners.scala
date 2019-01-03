@@ -266,18 +266,7 @@ object WorkloadRunners {
       val sc = spark.sparkContext   //SparkContext.getOrCreate()
       val logListener = new logging.LogListener
       sc.addSparkListener(logListener)
-      
-      // execute the workload, and have each task record where
-      // (and later how long) it executes
-      val partHosts = (0 until nparts).toArray
-        .map( i => (i, bmm.getBlockStatus(RDDBlockId(rddId,i), true)
-                      .map( x => (x._1.executorId,
-                                  x._1.host,
-                                  x._2.memSize,
-                                  x._2.diskSize,
-                                  x._2.storageLevel)
-                          ) 
-                    )).toMap
+
       val execHosts = r.map(rec => {
         val ctx = TaskContext.get()
         val stageId = ctx.stageId
@@ -293,9 +282,21 @@ object WorkloadRunners {
         wkldMap.getOrElse(execIdsparkenv, wkldDefault)(rec)
         (host, stageId, partId, execId, execIdsparkenv, isdriver)
       }).persist
-      
+
       // force the workload to actually execute
       execHosts.count
+      
+      // execute the workload, and have each task record where
+      // (and later how long) it executes
+      val partHosts = (0 until nparts).toArray
+        .map( i => (i, bmm.getBlockStatus(RDDBlockId(rddId,i), true)
+          .map( x => (x._1.executorId,
+            x._1.host,
+            x._2.memSize,
+            x._2.diskSize,
+            x._2.storageLevel)
+          )
+        )).toMap
       
       // clean up
       sc.removeSparkListener(logListener)

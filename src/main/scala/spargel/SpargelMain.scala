@@ -32,8 +32,8 @@ object SpargelMain {
         .config("spark.executor.memory", "10g")
         .config("spark.jars", "target/scala-2.11/spargel_2.11-1.0.jar")
         .getOrCreate()
-
-      val myrdd = getBigZeroRdd(sparkSession.sparkContext, 10, 1).persist(DISK_ONLY)
+      val sc = sparkSession.sparkContext
+      val myrdd = getBigZeroRdd(sc, 10, 1).persist(DISK_ONLY)
 
       myrdd.getNumPartitions
       val myparts = myrdd.partitions
