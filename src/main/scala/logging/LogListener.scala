@@ -16,6 +16,7 @@ class LogListener extends SparkListener {
   def getJobData() = { scala.collection.immutable.Map() ++ jobIdsToJobs }
   def getStageData() = { scala.collection.immutable.Map() ++ stageIdToStage }
   def getJobStages() = { scala.collection.immutable.Map() ++ jobIdToStageIds }
+  def getTaskData(stageId:Int) = { scala.collection.immutable.Map() ++ stageIdToStage(stageId).tasks }
 
   override def onJobStart(jobStart: SparkListenerJobStart) {
     val tmpJob = new LogJob(jobStart.jobId)
@@ -48,6 +49,10 @@ class LogListener extends SparkListener {
     }
   }
 
+  override def onTaskStart(taskStart: SparkListenerTaskStart): Unit = {
+    
+  }
+  
   override def onTaskEnd(taskEnd: SparkListenerTaskEnd): Unit = {
     val taskInfo = taskEnd.taskInfo
     val currStage = stageIdToStage.get(taskEnd.stageId)
@@ -60,7 +65,7 @@ class LogListener extends SparkListener {
       logTask.taskMetrics = Some(taskEnd.taskMetrics)
       logTask.submissionTime = stage.stageInfo.get.submissionTime
       //stage.tasks += logTask.taskInfo.get.taskId -> logTask
-      stage.tasks += logTask.taskInfo.get.index -> logTask
+      stage.tasks += logTask.taskInfo.get.taskId -> logTask
     }
   }
 
@@ -70,7 +75,7 @@ class LogListener extends SparkListener {
     for(stageId <- job.get.stageIds) {
       val stage = stageIdToStage.get(stageId)
       if(stage.nonEmpty) {
-        for((taskIndex, task) <- stage.get.tasks) {
+        for((taskId, task) <- stage.get.tasks) {
           task.jobEnd = Some(jobEnd.time)
         }
       }
@@ -92,8 +97,8 @@ class LogListener extends SparkListener {
   def getTaskMetrics(): scala.collection.mutable.Seq[FlatTask] = {
     var tasks:scala.collection.mutable.Seq[FlatTask] = scala.collection.mutable.Seq[FlatTask]()
     for((stageId,v) <- stageIdToStage) {
-      for((taskIndex,task) <- v.tasks) {
-        tasks :+= FlatTask(taskIndex, task.taskInfo.get.taskId, stageId, task.taskInfo.get.host,
+      for((taskId,task) <- v.tasks) {
+        tasks :+= FlatTask(task.taskInfo.get.index, task.taskInfo.get.taskId, stageId, task.taskInfo.get.host,
           task.taskInfo.get.taskLocality == TaskLocality.PROCESS_LOCAL,
           task.jobEnd.get - task.submissionTime.get,
           task.taskInfo.get.launchTime - task.submissionTime.get,

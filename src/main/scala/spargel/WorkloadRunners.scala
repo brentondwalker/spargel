@@ -99,21 +99,24 @@ object WorkloadRunners {
     def taskDataSchema: StructType = {
           StructType(
             Seq(
-              StructField(name = "partId", dataType = IntegerType, nullable = false),
-              StructField(name = "partMemSize", dataType = LongType, nullable = false),
-              StructField(name = "partDiskSize", dataType = LongType, nullable = false),
+              StructField(name = "taskId", dataType = LongType, nullable = false),
+              StructField(name = "taskIdContext", dataType = LongType, nullable = false),
+              StructField(name = "taskAttemptId", dataType = LongType, nullable = false),
               StructField(name = "stageId", dataType = IntegerType, nullable = false),
-              //StructField(name = "taskType", dataType = StringType, nullable = false),
-              StructField(name = "duration", dataType = LongType, nullable = false),
-              StructField(name = "executorId", dataType = StringType, nullable = false),
-              StructField(name = "storageExecutorId", dataType = StringType, nullable = false),
-              StructField(name = "finishTime", dataType = LongType, nullable = false),
-              StructField(name = "gettingResultTime", dataType = LongType, nullable = false),
+              StructField(name = "stageIdLogger", dataType = IntegerType, nullable = false),
+              StructField(name = "partId", dataType = IntegerType, nullable = false),
               StructField(name = "id", dataType = StringType, nullable = false),
               StructField(name = "index", dataType = IntegerType, nullable = false),
-              StructField(name = "launchTime", dataType = LongType, nullable = false),
-              StructField(name = "taskId", dataType = LongType, nullable = false),
+              StructField(name = "partMemSize", dataType = LongType, nullable = false),
+              StructField(name = "partDiskSize", dataType = LongType, nullable = false),
+              //StructField(name = "taskType", dataType = StringType, nullable = false),
+              StructField(name = "executorId", dataType = StringType, nullable = false),
+              StructField(name = "storageExecutorId", dataType = StringType, nullable = false),
               StructField(name = "taskLocality", dataType = StringType, nullable = false),
+              StructField(name = "duration", dataType = LongType, nullable = false),
+              StructField(name = "finishTime", dataType = LongType, nullable = false),
+              StructField(name = "gettingResultTime", dataType = LongType, nullable = false),
+              StructField(name = "launchTime", dataType = LongType, nullable = false),
               StructField(name = "diskBytesSpilled", dataType = LongType, nullable = false),
               StructField(name = "executorCpuTime", dataType = LongType, nullable = false),
               StructField(name = "executorDeserializeCpuTime", dataType = LongType, nullable = false),
@@ -149,6 +152,8 @@ object WorkloadRunners {
                           ) 
                     )).toMap
       
+      partHosts.foreach(println)
+                    
       // create a listener so we can track the lifecycles of the stages and tasks
       val spark = SparkSession.builder().getOrCreate()
       import spark.implicits._
@@ -160,8 +165,10 @@ object WorkloadRunners {
       // (and later how long) it executes
       val execHosts = r.map(rec => {
         val ctx = TaskContext.get()
+        val taskId = ctx.taskId
         val stageId = ctx.stageId
         val partId = ctx.partitionId
+        val taskAttemptId = ctx.taskAttemptId()
         val blockmgr = SparkEnv.get.blockManager
         val host = blockmgr.blockManagerId.host
         val execId = blockmgr.blockManagerId.executorId
@@ -169,87 +176,63 @@ object WorkloadRunners {
         if (execId != execIdsparkenv) { println("WARNING: BlockManager execId is different from SparkEnv execId") }
         val isdriver = if (blockmgr.blockManagerId.isDriver) "driver" else "worker"
         wkld(rec)
-        (host, stageId, partId, execId, execIdsparkenv, isdriver)
-      }).persist
+        (host, stageId, partId, execId, execIdsparkenv, isdriver, taskAttemptId, taskId)
+      }).collect.groupBy(_._8).map( x => x._1 -> x._2(0) )
       
-      // force the workload to actually execute
-      execHosts.count
-      
+      // we need to collect execHosts back to the driver.  If we leave it as an RDD
+      // and apply a map() to it again later, some or all of the contents will be
+      // recomputed, giving results relevant to the context of the later map tasks.
+      // This happens even if we persist this RDD and force it to be computed.
+            
       // clean up
       sc.removeSparkListener(logListener)
-            
+      
       var jobData = logListener.getJobData()
       var stageData = logListener.getStageData()
       var jobStages = logListener.getJobStages()
-      stageData.head._2.tasks
+      val stageId = execHosts.head._2._2
+      val taskData = logListener.getTaskData(stageId)
       
-      val stageId = execHosts.take(1)(0)._2
-      
-      // We need to move the data into this intermediate case class because the
-      // org.apache.spark.status.api.v1.TaskMetrics and org.apache.spark.scheduler.TaskInfo
-      // classes are not Serializable, so they cannot be used in the RDD.map below.
-      // XXX- knowing this we could change the logging package to extract the data
-      //      into something more convenient
-      val taskData = stageData.get(stageId).get.tasks.map{ case (k:Int,v:LogTask) => {
-        val taskInfo = v.taskInfo.get
-        val taskMetrics = v.taskMetrics.get
-        (taskInfo.index , FlatTaskDetail(stageId,
-                                        taskInfo.taskId,
-                                        taskInfo.duration,
-                                        taskInfo.executorId,
-                                        taskInfo.finishTime,
-                                        taskInfo.gettingResultTime,
-                                        taskInfo.id,
-                                        taskInfo.index,
-                                        taskInfo.launchTime,
-                                        taskInfo.taskLocality.toString(),
-                                        taskMetrics.diskBytesSpilled,
-                                        taskMetrics.executorCpuTime,
-                                        taskMetrics.executorDeserializeCpuTime,
-                                        taskMetrics.executorDeserializeTime,
-                                        taskMetrics.executorRunTime,
-                                        taskMetrics.memoryBytesSpilled,
-                                        taskMetrics.peakExecutionMemory,
-                                        taskMetrics.resultSerializationTime,
-                                        taskMetrics.resultSize))
-      }}
-      
-      val executionDataRdd = execHosts.map( x => {
-        Row(x._3,                               // partId
-            partHosts.get(x._3).head.head._3,   // partMemSize
-            partHosts.get(x._3).head.head._4,   // partDiskSize
-            x._2,                               // stageID
-            taskData(x._3).duration,
-            taskData(x._3).executorId,
-            x._4,                               // storageExecutorId
-            taskData(x._3).finishTime,
-            taskData(x._3).gettingResultTime,
-            taskData(x._3).id,
-            taskData(x._3).index,
-            taskData(x._3).launchTime,
-            taskData(x._3).taskId,
-            taskData(x._3).taskLocality.toString(),
-            taskData(x._3).diskBytesSpilled,
-            taskData(x._3).executorCpuTime,
-            taskData(x._3).executorDeserializeCpuTime,
-            taskData(x._3).executorDeserializeTime,
-            taskData(x._3).executorRunTime,
-            taskData(x._3).memoryBytesSpilled,
-            taskData(x._3).peakExecutionMemory,
-            taskData(x._3).resultSerializationTime,
-            taskData(x._3).resultSize
-          )
+      val executionData = taskData.map( x => {
+        val taskId = x._1
+        val partId = execHosts(taskId)._3
+        val taskInfo = x._2.taskInfo.get
+        val taskMetrics = x._2.taskMetrics.get
+        Row(taskId,                              // taskId
+            execHosts(taskId)._8,                // taskId from TaskContext
+            execHosts(taskId)._7,                // taskAttemptId
+            execHosts(taskId)._2,                // stageId
+            x._2.stageId,                        // stageId from Logger
+            partId,                              // partitionId from TaskContext
+            taskInfo.id,                         // id string from Logger
+            taskInfo.index,                      // task index from Logger
+            partHosts.get(partId).head.head._3,  // partMemSize
+            partHosts.get(partId).head.head._4,  // partDiskSize
+            taskInfo.executorId,                 // execution ExecutorId
+            partHosts.get(partId).head.head._1,  // storage ExecutorId
+            taskInfo.taskLocality.toString(),    // taskLocality
+            taskInfo.duration,
+            taskInfo.finishTime,
+            taskInfo.gettingResultTime,
+            taskInfo.launchTime,
+            taskMetrics.diskBytesSpilled,
+            taskMetrics.executorCpuTime,
+            taskMetrics.executorDeserializeCpuTime,
+            taskMetrics.executorDeserializeTime,
+            taskMetrics.executorRunTime,
+            taskMetrics.memoryBytesSpilled,
+            taskMetrics.peakExecutionMemory,
+            taskMetrics.resultSerializationTime,
+            taskMetrics.resultSize
+            )
       })
       
-      val executionDf = spark.createDataFrame(executionDataRdd, taskDataSchema)
-      
-      execHosts.unpersist(false)
+      val executionDf = spark.createDataFrame(sc.parallelize(executionData.toSeq, executionData.size), this.taskDataSchema)
       
       executionDf
     }
     
     
-        
     /**
      * Run a workload on every entry of an RDD.
      * The workload to run will depend on the worker doing the processing.
@@ -279,10 +262,15 @@ object WorkloadRunners {
                                   x._2.storageLevel)
                           ) 
                     )).toMap
+      
+      partHosts.foreach(println)
+      
       val execHosts = r.map(rec => {
         val ctx = TaskContext.get()
+        val taskId = ctx.taskId
         val stageId = ctx.stageId
         val partId = ctx.partitionId
+        val taskAttemptId = ctx.taskAttemptId()
         val blockmgr = SparkEnv.get.blockManager
         val host = blockmgr.blockManagerId.host
         val execId = blockmgr.blockManagerId.executorId
@@ -292,77 +280,51 @@ object WorkloadRunners {
         
         // look up and execute the appropriate workload for this executor
         wkldMap.getOrElse(execIdsparkenv, wkldDefault)(rec)
-        (host, stageId, partId, execId, execIdsparkenv, isdriver)
-      }).persist
+        (host, stageId, partId, execId, execIdsparkenv, isdriver, taskAttemptId, taskId)
+      }).collect.groupBy(_._8).map( x => x._1 -> x._2(0) )
       
-      // force the workload to actually execute
-      execHosts.count
-      
-      // clean up
-      sc.removeSparkListener(logListener)
-            
+      var jobData = logListener.getJobData()
       var stageData = logListener.getStageData()
-      val stageId = execHosts.take(1)(0)._2
+      var jobStages = logListener.getJobStages()
+      val stageId = execHosts.head._2._2
+      val taskData = logListener.getTaskData(stageId)
       
-      // We need to move the data into this intermediate case class because the
-      // org.apache.spark.status.api.v1.TaskMetrics and org.apache.spark.scheduler.TaskInfo
-      // classes are not Serializable, so they cannot be used in the RDD.map below.
-      // XXX- knowing this we could change the logging package to extract the data
-      //      into something more convenient
-      val taskData = stageData.get(stageId).get.tasks.map{ case (k:Int,v:LogTask) => {
-        val taskInfo = v.taskInfo.get
-        val taskMetrics = v.taskMetrics.get
-        (taskInfo.index , FlatTaskDetail(stageId,
-                                        taskInfo.taskId,
-                                        taskInfo.duration,
-                                        taskInfo.executorId,
-                                        taskInfo.finishTime,
-                                        taskInfo.gettingResultTime,
-                                        taskInfo.id,
-                                        taskInfo.index,
-                                        taskInfo.launchTime,
-                                        taskInfo.taskLocality.toString(),
-                                        taskMetrics.diskBytesSpilled,
-                                        taskMetrics.executorCpuTime,
-                                        taskMetrics.executorDeserializeCpuTime,
-                                        taskMetrics.executorDeserializeTime,
-                                        taskMetrics.executorRunTime,
-                                        taskMetrics.memoryBytesSpilled,
-                                        taskMetrics.peakExecutionMemory,
-                                        taskMetrics.resultSerializationTime,
-                                        taskMetrics.resultSize))
-      }}
-      
-      val executionDataRdd = execHosts.map( x => {
-        Row(x._3,                               // partId
-            partHosts.get(x._3).head.head._3,   // partMemSize
-            partHosts.get(x._3).head.head._4,   // partDiskSize
-            x._2,                               // stageID
-            taskData(x._3).duration,
-            taskData(x._3).executorId,
-            x._4,                               // storageExecutorId
-            taskData(x._3).finishTime,
-            taskData(x._3).gettingResultTime,
-            taskData(x._3).id,
-            taskData(x._3).index,
-            taskData(x._3).launchTime,
-            taskData(x._3).taskId,
-            taskData(x._3).taskLocality.toString(),
-            taskData(x._3).diskBytesSpilled,
-            taskData(x._3).executorCpuTime,
-            taskData(x._3).executorDeserializeCpuTime,
-            taskData(x._3).executorDeserializeTime,
-            taskData(x._3).executorRunTime,
-            taskData(x._3).memoryBytesSpilled,
-            taskData(x._3).peakExecutionMemory,
-            taskData(x._3).resultSerializationTime,
-            taskData(x._3).resultSize
-          )
+      val executionData = taskData.map( x => {
+        val taskId = x._1
+        val partId = execHosts(taskId)._3
+        val taskInfo = x._2.taskInfo.get
+        val taskMetrics = x._2.taskMetrics.get
+        Row(taskId,                              // taskId
+            execHosts(taskId)._8,                // taskId from TaskContext
+            execHosts(taskId)._7,                // taskAttemptId
+            execHosts(taskId)._2,                // stageId
+            x._2.stageId,                        // stageId from Logger
+            partId,                              // partitionId from TaskContext
+            taskInfo.id,                         // id string from Logger
+            taskInfo.index,                      // task index from Logger
+            partHosts.get(partId).head.head._3,  // partMemSize
+            partHosts.get(partId).head.head._4,  // partDiskSize
+            taskInfo.executorId,                 // execution ExecutorId
+            partHosts.get(partId).head.head._1,  // storage ExecutorId
+            taskInfo.taskLocality.toString(),    // taskLocality
+            taskInfo.duration,
+            taskInfo.finishTime,
+            taskInfo.gettingResultTime,
+            taskInfo.launchTime,
+            taskMetrics.diskBytesSpilled,
+            taskMetrics.executorCpuTime,
+            taskMetrics.executorDeserializeCpuTime,
+            taskMetrics.executorDeserializeTime,
+            taskMetrics.executorRunTime,
+            taskMetrics.memoryBytesSpilled,
+            taskMetrics.peakExecutionMemory,
+            taskMetrics.resultSerializationTime,
+            taskMetrics.resultSize
+            )
       })
       
-      val executionDf = spark.createDataFrame(executionDataRdd, taskDataSchema)
-      
-      execHosts.unpersist(false)
+      val executionDf = spark.createDataFrame(sc.parallelize(executionData.toSeq, executionData.size), this.taskDataSchema)
+
       
       executionDf
     }

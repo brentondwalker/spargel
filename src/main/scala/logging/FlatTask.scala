@@ -15,7 +15,7 @@ case class FlatTask(taskIndex:Int, taskId:Long, stageId:Long, host:String, local
 }
 
 // More detailed FlatTask class
-case class FlatTaskDetail(stageId:Long, taskId:Long, duration:Long, executorId:String, finishTime:Long, gettingResultTime:Long, id:String, index:Int,
+case class FlatTaskDetail(stageId:Int, taskId:Long, duration:Long, executorId:String, finishTime:Long, gettingResultTime:Long, id:String, index:Int,
         launchTime:Long, taskLocality:String, diskBytesSpilled:Long, executorCpuTime:Long, executorDeserializeCpuTime:Long, 
         executorDeserializeTime:Long, executorRunTime:Long, memoryBytesSpilled:Long, peakExecutionMemory:Long, resultSerializationTime:Long, resultSize:Long)
 
@@ -41,6 +41,7 @@ case class LogTask(stageId: Int) extends Serializable {
 case class LogStage(stageId: Int) extends Serializable {
     var stageInfo: Option[StageInfo] = None
     var job: Option[LogJob] = None
-    var tasks: scala.collection.mutable.Map[Int, LogTask] = scala.collection.mutable.Map.empty[Int, LogTask]
+    // Key: TaskId ,  Value: LogTask
+    var tasks: scala.collection.mutable.Map[Long, LogTask] = scala.collection.mutable.Map.empty[Long, LogTask]
     override def toString = { "LogStage("+stageInfo.getOrElse("None")+", "+job.getOrElse("None")+", "+tasks+")" }
 }
