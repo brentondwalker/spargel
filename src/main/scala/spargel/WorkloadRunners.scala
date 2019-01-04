@@ -193,6 +193,8 @@ object WorkloadRunners {
       val stageId = execHosts.head._2._2
       val taskData = logListener.getTaskData(stageId)
       
+      // sometimes a partition is stored nowhere, so we need to be careful about accessing partHosts
+      
       val executionData = taskData.map( x => {
         val taskId = x._1
         val partId = execHosts(taskId)._3
@@ -206,10 +208,10 @@ object WorkloadRunners {
             partId,                              // partitionId from TaskContext
             taskInfo.id,                         // id string from Logger
             taskInfo.index,                      // task index from Logger
-            partHosts.get(partId).head.head._3,  // partMemSize
-            partHosts.get(partId).head.head._4,  // partDiskSize
+            if (! partHosts.get(partId).get.isEmpty) partHosts.get(partId).head.head._3 else -1L,  // partMemSize
+            if (! partHosts.get(partId).get.isEmpty) partHosts.get(partId).head.head._4 else -1L,  // partDiskSize
             taskInfo.executorId,                 // execution ExecutorId
-            partHosts.get(partId).head.head._1,  // storage ExecutorId
+            if (! partHosts.get(partId).get.isEmpty) partHosts.get(partId).head.head._1 else "NONE",  // storage ExecutorId
             taskInfo.taskLocality.toString(),    // taskLocality
             taskInfo.duration,
             taskInfo.finishTime,
@@ -302,10 +304,10 @@ object WorkloadRunners {
             partId,                              // partitionId from TaskContext
             taskInfo.id,                         // id string from Logger
             taskInfo.index,                      // task index from Logger
-            partHosts.get(partId).head.head._3,  // partMemSize
-            partHosts.get(partId).head.head._4,  // partDiskSize
+            if (! partHosts.get(partId).get.isEmpty) partHosts.get(partId).head.head._3 else -1L,  // partMemSize
+            if (! partHosts.get(partId).get.isEmpty) partHosts.get(partId).head.head._4 else -1L,  // partDiskSize
             taskInfo.executorId,                 // execution ExecutorId
-            partHosts.get(partId).head.head._1,  // storage ExecutorId
+            if (! partHosts.get(partId).get.isEmpty) partHosts.get(partId).head.head._1 else "NONE",  // storage ExecutorId
             taskInfo.taskLocality.toString(),    // taskLocality
             taskInfo.duration,
             taskInfo.finishTime,
