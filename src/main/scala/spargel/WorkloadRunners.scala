@@ -152,7 +152,7 @@ object WorkloadRunners {
                           ) 
                     )).toMap
       
-      partHosts.foreach(println)
+      //partHosts.foreach(println)
                     
       // create a listener so we can track the lifecycles of the stages and tasks
       val spark = SparkSession.builder().getOrCreate()
@@ -176,14 +176,23 @@ object WorkloadRunners {
         if (execId != execIdsparkenv) { println("WARNING: BlockManager execId is different from SparkEnv execId") }
         val isdriver = if (blockmgr.blockManagerId.isDriver) "driver" else "worker"
         wkld(rec)
+        // randomly make a task fail
+        if (math.random < 0.1) {
+          //val xx:Option[Int] = None
+          //xx.get + 5
+          throw new RuntimeException("This exception is thrown to simulate task failures and lead to job failure")
+        }
         (host, stageId, partId, execId, execIdsparkenv, isdriver, taskAttemptId, taskId)
       }).collect.groupBy(_._8).map( x => x._1 -> x._2(0) )
+      
+      //println("execHosts:")
+      //execHosts.foreach(println)
       
       // we need to collect execHosts back to the driver.  If we leave it as an RDD
       // and apply a map() to it again later, some or all of the contents will be
       // recomputed, giving results relevant to the context of the later map tasks.
       // This happens even if we persist this RDD and force it to be computed.
-            
+      
       // clean up
       sc.removeSparkListener(logListener)
       
@@ -197,36 +206,62 @@ object WorkloadRunners {
       
       val executionData = taskData.map( x => {
         val taskId = x._1
-        val partId = execHosts(taskId)._3
+        val partId = execHosts.getOrElse(taskId, ("",0,-1,"","","",0L,0L))._3
         val taskInfo = x._2.taskInfo.get
         val taskMetrics = x._2.taskMetrics.get
-        Row(taskId,                              // taskId
-            execHosts(taskId)._8,                // taskId from TaskContext
-            execHosts(taskId)._7,                // taskAttemptId
-            execHosts(taskId)._2,                // stageId
-            x._2.stageId,                        // stageId from Logger
-            partId,                              // partitionId from TaskContext
-            taskInfo.id,                         // id string from Logger
-            taskInfo.index,                      // task index from Logger
-            if (! partHosts.get(partId).get.isEmpty) partHosts.get(partId).head.head._3 else -1L,  // partMemSize
-            if (! partHosts.get(partId).get.isEmpty) partHosts.get(partId).head.head._4 else -1L,  // partDiskSize
-            taskInfo.executorId,                 // execution ExecutorId
-            if (! partHosts.get(partId).get.isEmpty) partHosts.get(partId).head.head._1 else "NONE",  // storage ExecutorId
-            taskInfo.taskLocality.toString(),    // taskLocality
-            taskInfo.duration,
-            taskInfo.finishTime,
-            taskInfo.gettingResultTime,
-            taskInfo.launchTime,
-            taskMetrics.diskBytesSpilled,
-            taskMetrics.executorCpuTime,
-            taskMetrics.executorDeserializeCpuTime,
-            taskMetrics.executorDeserializeTime,
-            taskMetrics.executorRunTime,
-            taskMetrics.memoryBytesSpilled,
-            taskMetrics.peakExecutionMemory,
-            taskMetrics.resultSerializationTime,
-            taskMetrics.resultSize
-            )
+        if (taskInfo.failed) {
+            Row(taskId, 0L, 0L, 0,
+                x._2.stageId,                        // stageId from Logger
+                0,                              // partitionId from TaskContext
+                taskInfo.id,                         // id string from Logger
+                taskInfo.index,                      // task index from Logger
+                -1L, -1L,
+                taskInfo.executorId,
+                "NONE",
+                taskInfo.taskLocality.toString(),    // taskLocality
+                taskInfo.duration,
+                taskInfo.finishTime,
+                taskInfo.gettingResultTime,
+                taskInfo.launchTime,
+                taskMetrics.diskBytesSpilled,
+                taskMetrics.executorCpuTime,
+                taskMetrics.executorDeserializeCpuTime,
+                taskMetrics.executorDeserializeTime,
+                taskMetrics.executorRunTime,
+                taskMetrics.memoryBytesSpilled,
+                taskMetrics.peakExecutionMemory,
+                taskMetrics.resultSerializationTime,
+                taskMetrics.resultSize
+                )
+        } else {
+            Row(taskId,                              // taskId
+                execHosts(taskId)._8,                // taskId from TaskContext
+                execHosts(taskId)._7,                // taskAttemptId
+                execHosts(taskId)._2,                // stageId
+                x._2.stageId,                        // stageId from Logger
+                partId,                              // partitionId from TaskContext
+                taskInfo.id,                         // id string from Logger
+                taskInfo.index,                      // task index from Logger
+                if (! partHosts.get(partId).get.isEmpty) partHosts.get(partId).head.head._3 else -1L,  // partMemSize
+                if (! partHosts.get(partId).get.isEmpty) partHosts.get(partId).head.head._4 else -1L,  // partDiskSize
+                taskInfo.executorId,                 // execution ExecutorId
+                if (! partHosts.get(partId).get.isEmpty) partHosts.get(partId).head.head._1 else "NONE",  // storage ExecutorId
+                taskInfo.taskLocality.toString(),    // taskLocality
+                taskInfo.duration,
+                taskInfo.finishTime,
+                taskInfo.gettingResultTime,
+                taskInfo.launchTime,
+                taskMetrics.diskBytesSpilled,
+                taskMetrics.executorCpuTime,
+                taskMetrics.executorDeserializeCpuTime,
+                taskMetrics.executorDeserializeTime,
+                taskMetrics.executorRunTime,
+                taskMetrics.memoryBytesSpilled,
+                taskMetrics.peakExecutionMemory,
+                taskMetrics.resultSerializationTime,
+                taskMetrics.resultSize
+                )
+        }
       })
       
       val executionDf = spark.createDataFrame(sc.parallelize(executionData.toSeq, executionData.size), this.taskDataSchema)
@@ -265,7 +300,7 @@ object WorkloadRunners {
                           ) 
                     )).toMap
       
-      partHosts.foreach(println)
+      //partHosts.foreach(println)
       
       val execHosts = r.map(rec => {
         val ctx = TaskContext.get()
