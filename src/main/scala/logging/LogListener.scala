@@ -1,6 +1,6 @@
 package logging
 
-import org.apache.spark.executor.TaskMetrics
+import org.apache.spark.executor.{InputReadData, TaskMetrics}
 import org.apache.spark.scheduler._
 
 /**
@@ -94,7 +94,8 @@ class LogListener extends SparkListener {
     for((stageId,v) <- stageIdToStage) {
       for((taskIndex,task) <- v.tasks) {
         if(task.taskInfo.nonEmpty) {
-          val readParams = task.taskMetrics.get.asInstanceOf[TaskMetrics].inputMetrics.readParams.headOption
+          val readParams = task.taskMetrics.get.asInstanceOf[TaskMetrics].inputMetrics.readParams
+            .lastOption.getOrElse(InputReadData("-1", "No data read", false, 0L, 0L))
           tasks :+= FlatTask(taskIndex, task.taskInfo.get.taskId, stageId, task.taskInfo.get.host,
             task.taskInfo.get.taskLocality == TaskLocality.PROCESS_LOCAL,
             task.jobEnd.getOrElse(0L) - task.submissionTime.getOrElse(0L),
@@ -102,10 +103,10 @@ class LogListener extends SparkListener {
             task.taskInfo.get.finishTime - task.taskInfo.get.launchTime,
             task.taskMetrics.get.asInstanceOf[TaskMetrics].executorDeserializeTime,
             0.0, task.taskMetrics.get.asInstanceOf[TaskMetrics].executorCpuTime,
-            task.taskMetrics.get.asInstanceOf[TaskMetrics].inputMetrics.readTime,
-            if (readParams.nonEmpty) readParams.get.locationExecId else "",
-            if (readParams.nonEmpty) readParams.get.readMethod.toString else "",
-            if (readParams.nonEmpty) readParams.get.cachedBlock else false
+            readParams.readTime,
+            readParams.locationExecId,
+            readParams.readMethod,
+            readParams.cachedBlock
           )
         }
       }
