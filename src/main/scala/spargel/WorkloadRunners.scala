@@ -100,16 +100,13 @@ object WorkloadRunners {
           StructType(
             Seq(
               StructField(name = "taskId", dataType = LongType, nullable = false),
-              StructField(name = "taskIdContext", dataType = LongType, nullable = false),
-              StructField(name = "taskAttemptId", dataType = LongType, nullable = false),
               StructField(name = "stageId", dataType = IntegerType, nullable = false),
-              StructField(name = "stageIdLogger", dataType = IntegerType, nullable = false),
-              StructField(name = "partId", dataType = IntegerType, nullable = false),
-              StructField(name = "id", dataType = StringType, nullable = false),
               StructField(name = "index", dataType = IntegerType, nullable = false),
+              StructField(name = "attemptNumber", dataType = IntegerType, nullable = false),
+              StructField(name = "id", dataType = StringType, nullable = false),
+              StructField(name = "failed", dataType = BooleanType, nullable = false),
               StructField(name = "partMemSize", dataType = LongType, nullable = false),
               StructField(name = "partDiskSize", dataType = LongType, nullable = false),
-              //StructField(name = "taskType", dataType = StringType, nullable = false),
               StructField(name = "executorId", dataType = StringType, nullable = false),
               StructField(name = "storageExecutorId", dataType = StringType, nullable = false),
               StructField(name = "taskLocality", dataType = StringType, nullable = false),
@@ -129,7 +126,6 @@ object WorkloadRunners {
             )
           )
     }
-
   
     /**
      * Run a workload on every entry of an RDD.
@@ -163,108 +159,64 @@ object WorkloadRunners {
 
       // execute the workload, and have each task record where
       // (and later how long) it executes
-      val execHosts = r.map(rec => {
+      val stageId = r.map(rec => {
         val ctx = TaskContext.get()
-        val taskId = ctx.taskId
         val stageId = ctx.stageId
-        val partId = ctx.partitionId
-        val taskAttemptId = ctx.taskAttemptId()
-        val blockmgr = SparkEnv.get.blockManager
-        val host = blockmgr.blockManagerId.host
-        val execId = blockmgr.blockManagerId.executorId
-        val execIdsparkenv = SparkEnv.get.executorId
-        if (execId != execIdsparkenv) { println("WARNING: BlockManager execId is different from SparkEnv execId") }
-        val isdriver = if (blockmgr.blockManagerId.isDriver) "driver" else "worker"
         wkld(rec)
         // randomly make a task fail
-        if (math.random < 0.1) {
-          //val xx:Option[Int] = None
-          //xx.get + 5
-          throw new RuntimeException("This exception is thrown to simulate task failures and lead to job failure")
-        }
-        (host, stageId, partId, execId, execIdsparkenv, isdriver, taskAttemptId, taskId)
-      }).collect.groupBy(_._8).map( x => x._1 -> x._2(0) )
-      
-      //println("execHosts:")
-      //execHosts.foreach(println)
-      
-      // we need to collect execHosts back to the driver.  If we leave it as an RDD
-      // and apply a map() to it again later, some or all of the contents will be
-      // recomputed, giving results relevant to the context of the later map tasks.
-      // This happens even if we persist this RDD and force it to be computed.
+        //if (math.random < 0.1) {
+        //  throw new RuntimeException("This exception is thrown to simulate task failures and lead to job failure")
+        //}
+        
+        // return the stage ID of this task
+        // the stage IDs of all the tasks will be the same
+        stageId
+      }).collect.max
       
       // clean up
       sc.removeSparkListener(logListener)
       
-      var jobData = logListener.getJobData()
-      var stageData = logListener.getStageData()
-      var jobStages = logListener.getJobStages()
-      val stageId = execHosts.head._2._2
       val taskData = logListener.getTaskData(stageId)
+      val jobData = logListener.getJobData()
+      jobData.foreach( x => println(x._1+"\t"+x._2+"\t"+(x._2.time.get-x._2.submissionTime.get)) )
       
       // sometimes a partition is stored nowhere, so we need to be careful about accessing partHosts
       
       val executionData = taskData.map( x => {
         val taskId = x._1
-        val partId = execHosts.getOrElse(taskId, ("",0,-1,"","","",0L,0L))._3
         val taskInfo = x._2.taskInfo.get
         val taskMetrics = x._2.taskMetrics.get
-        if (taskInfo.failed) {
-            Row(taskId, 0L, 0L, 0,
-                x._2.stageId,                        // stageId from Logger
-                0,                              // partitionId from TaskContext
-                taskInfo.id,                         // id string from Logger
-                taskInfo.index,                      // task index from Logger
-                -1L, -1L,
-                taskInfo.executorId,
-                "NONE",
-                taskInfo.taskLocality.toString(),    // taskLocality
-                taskInfo.duration,
-                taskInfo.finishTime,
-                taskInfo.gettingResultTime,
-                taskInfo.launchTime,
-                taskMetrics.diskBytesSpilled,
-                taskMetrics.executorCpuTime,
-                taskMetrics.executorDeserializeCpuTime,
-                taskMetrics.executorDeserializeTime,
-                taskMetrics.executorRunTime,
-                taskMetrics.memoryBytesSpilled,
-                taskMetrics.peakExecutionMemory,
-                taskMetrics.resultSerializationTime,
-                taskMetrics.resultSize
-                )
-        } else {
-            Row(taskId,                              // taskId
-                execHosts(taskId)._8,                // taskId from TaskContext
-                execHosts(taskId)._7,                // taskAttemptId
-                execHosts(taskId)._2,                // stageId
-                x._2.stageId,                        // stageId from Logger
-                partId,                              // partitionId from TaskContext
-                taskInfo.id,                         // id string from Logger
-                taskInfo.index,                      // task index from Logger
-                if (! partHosts.get(partId).get.isEmpty) partHosts.get(partId).head.head._3 else -1L,  // partMemSize
-                if (! partHosts.get(partId).get.isEmpty) partHosts.get(partId).head.head._4 else -1L,  // partDiskSize
-                taskInfo.executorId,                 // execution ExecutorId
-                if (! partHosts.get(partId).get.isEmpty) partHosts.get(partId).head.head._1 else "NONE",  // storage ExecutorId
-                taskInfo.taskLocality.toString(),    // taskLocality
-                taskInfo.duration,
-                taskInfo.finishTime,
-                taskInfo.gettingResultTime,
-                taskInfo.launchTime,
-                taskMetrics.diskBytesSpilled,
-                taskMetrics.executorCpuTime,
-                taskMetrics.executorDeserializeCpuTime,
-                taskMetrics.executorDeserializeTime,
-                taskMetrics.executorRunTime,
-                taskMetrics.memoryBytesSpilled,
-                taskMetrics.peakExecutionMemory,
-                taskMetrics.resultSerializationTime,
-                taskMetrics.resultSize
-                )
-        }
+        Row(taskId,                              // taskId
+            x._2.stageId,                        // stageId from Logger
+            taskInfo.index,                      // task index from Logger
+            taskInfo.attemptNumber,
+            taskInfo.id,                         // id string from Logger
+            taskInfo.failed,
+            if (! partHosts.get(taskInfo.index).get.isEmpty) partHosts.get(taskInfo.index).head.head._3 else -1L,  // partMemSize
+            if (! partHosts.get(taskInfo.index).get.isEmpty) partHosts.get(taskInfo.index).head.head._4 else -1L,  // partDiskSize
+            taskInfo.executorId,                 // execution ExecutorId
+            if (! partHosts.get(taskInfo.index).get.isEmpty) partHosts.get(taskInfo.index).head.head._1 else "NONE",  // storage ExecutorId
+            taskInfo.taskLocality.toString(),    // taskLocality
+            taskInfo.duration,
+            taskInfo.finishTime,
+            taskInfo.gettingResultTime,
+            taskInfo.launchTime,
+            taskMetrics.diskBytesSpilled,
+            taskMetrics.executorCpuTime,
+            taskMetrics.executorDeserializeCpuTime,
+            taskMetrics.executorDeserializeTime,
+            taskMetrics.executorRunTime,
+            taskMetrics.memoryBytesSpilled,
+            taskMetrics.peakExecutionMemory,
+            taskMetrics.resultSerializationTime,
+            taskMetrics.resultSize
+            )
       })
       
-      val executionDf = spark.createDataFrame(sc.parallelize(executionData.toSeq, executionData.size), this.taskDataSchema)
+      val numExecutors = sc.statusTracker.getExecutorInfos.length - 1
+
+      
+      val executionDf = spark.createDataFrame(sc.parallelize(executionData.toSeq, numExecutors), this.taskDataSchema)
       
       executionDf
     }
@@ -302,47 +254,35 @@ object WorkloadRunners {
       
       //partHosts.foreach(println)
       
-      val execHosts = r.map(rec => {
+      val stageId = r.map(rec => {
         val ctx = TaskContext.get()
-        val taskId = ctx.taskId
         val stageId = ctx.stageId
-        val partId = ctx.partitionId
-        val taskAttemptId = ctx.taskAttemptId()
-        val blockmgr = SparkEnv.get.blockManager
-        val host = blockmgr.blockManagerId.host
-        val execId = blockmgr.blockManagerId.executorId
-        val execIdsparkenv = SparkEnv.get.executorId
-        if (execId != execIdsparkenv) { println("WARNING: BlockManager execId is different from SparkEnv execId") }
-        val isdriver = if (blockmgr.blockManagerId.isDriver) "driver" else "worker"
-        
+        val execId = SparkEnv.get.executorId
+
         // look up and execute the appropriate workload for this executor
-        wkldMap.getOrElse(execIdsparkenv, wkldDefault)(rec)
-        (host, stageId, partId, execId, execIdsparkenv, isdriver, taskAttemptId, taskId)
-      }).collect.groupBy(_._8).map( x => x._1 -> x._2(0) )
+        wkldMap.getOrElse(execId, wkldDefault)(rec)
+        
+        // return the stage ID of this task
+        // the stage IDs of all the tasks will be the same
+        stageId
+      }).collect.max
       
-      var jobData = logListener.getJobData()
-      var stageData = logListener.getStageData()
-      var jobStages = logListener.getJobStages()
-      val stageId = execHosts.head._2._2
       val taskData = logListener.getTaskData(stageId)
       
       val executionData = taskData.map( x => {
         val taskId = x._1
-        val partId = execHosts(taskId)._3
         val taskInfo = x._2.taskInfo.get
         val taskMetrics = x._2.taskMetrics.get
         Row(taskId,                              // taskId
-            execHosts(taskId)._8,                // taskId from TaskContext
-            execHosts(taskId)._7,                // taskAttemptId
-            execHosts(taskId)._2,                // stageId
             x._2.stageId,                        // stageId from Logger
-            partId,                              // partitionId from TaskContext
-            taskInfo.id,                         // id string from Logger
             taskInfo.index,                      // task index from Logger
-            if (! partHosts.get(partId).get.isEmpty) partHosts.get(partId).head.head._3 else -1L,  // partMemSize
-            if (! partHosts.get(partId).get.isEmpty) partHosts.get(partId).head.head._4 else -1L,  // partDiskSize
+            taskInfo.attemptNumber,
+            taskInfo.id,                         // id string from Logger
+            taskInfo.failed,
+            if (! partHosts.get(taskInfo.index).get.isEmpty) partHosts.get(taskInfo.index).head.head._3 else -1L,  // partMemSize
+            if (! partHosts.get(taskInfo.index).get.isEmpty) partHosts.get(taskInfo.index).head.head._4 else -1L,  // partDiskSize
             taskInfo.executorId,                 // execution ExecutorId
-            if (! partHosts.get(partId).get.isEmpty) partHosts.get(partId).head.head._1 else "NONE",  // storage ExecutorId
+            if (! partHosts.get(taskInfo.index).get.isEmpty) partHosts.get(taskInfo.index).head.head._1 else "NONE",  // storage ExecutorId
             taskInfo.taskLocality.toString(),    // taskLocality
             taskInfo.duration,
             taskInfo.finishTime,
