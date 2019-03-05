@@ -10,6 +10,10 @@ import scala.math.random
 import RddPartitioner.getPartitionHosts
 
 object KeyPartitioners {
+  //(partId, execId, key, numRecords)
+  //(partId, execId, key, recordId)
+  case class RecordPartitionInfo(partId:Int, execId:Int, key:Int, recordId:Int)
+  case class KeyPartitionInfo(partId:Int, execId:Int, key:Int, size:Int)
   
     /**
      * Generate a huge RDD.
@@ -43,14 +47,17 @@ object KeyPartitioners {
      * For each record print out the partition it belongs to and the
      *  worker where it is stored.
      *  
+     *  XXX: the thing this returns has the same number of entries as the RDD.
+     *  Maybe it should return an RDD.
+     *  
      *  The values returned will be:
      *  (partId, execId, key, recordId)
      */
-    def getRecordHosts[A](r:RDD[(Int,(Int,A))]):Array[(Int,Int,Int,Int)] = {
+    def getRecordHosts[A](r:RDD[(Int,(Int,A))]):Array[RecordPartitionInfo] = {
       val partitionHostsArray = getPartitionHosts(r)
       if (partitionHostsArray.map(_.size).sum <= 0) {
         println("WARNING: the RDD does not appear to be persisted.")
-        return Array.empty[(Int,Int,Int,Int)]
+        return Array.empty[RecordPartitionInfo]
       }
       
       val partToExecId = partitionHostsArray.map( x => {
@@ -60,7 +67,7 @@ object KeyPartitioners {
       r.map( x => {
         val ctx = TaskContext.get()
         val partId = ctx.partitionId()
-        (partId, partToExecId.get(partId).get, x._1, x._2._1)
+        RecordPartitionInfo(partId, partToExecId.get(partId).get, x._1, x._2._1)
       }).collect
       
     }
@@ -72,7 +79,7 @@ object KeyPartitioners {
      * executor where it is stored.
      */
     def printRecordHosts[A](r:RDD[(Int,(Int,A))]) {
-      getRecordHosts(r).sortBy(_._4).foreach(x => println("recId="+x._4+"  \tkey="+x._3+"\tpartId="+x._1+"\texecId="+x._2))
+      getRecordHosts(r).sortBy(_.recordId).foreach(x => println("recId="+x.recordId+"  \tkey="+x.key+"\tpartId="+x.partId+"\texecId="+x.execId))
     }
     
     
@@ -83,8 +90,8 @@ object KeyPartitioners {
      * 
      * Note that a partition /may/ be stored multiple places.
      */
-    def getRddKeyPartitions[A](r:RDD[(Int,(Int,A))]): Array[(Int,Int,Int,Int)] = {
-      getRecordHosts(r).groupBy(x=>(x._1,x._2,x._3)).map( x => (x._1._1, x._1._2, x._1._3, x._2.size) ).toArray
+    def getRddKeyPartitions[A](r:RDD[(Int,(Int,A))]): Array[KeyPartitionInfo] = {
+      getRecordHosts(r).groupBy(x=>(x.partId,x.execId,x.key)).map( x => KeyPartitionInfo(x._1._1, x._1._2, x._1._3, x._2.size) ).toArray
     }
     
     
@@ -94,33 +101,10 @@ object KeyPartitioners {
      * the number of records under each distinct tuple.
      */
     def printRddKeyPartitions[A](r:RDD[(Int,(Int,A))]) {
-      getRddKeyPartitions(r).foreach(x => println("partId="+x._1+" \texecId="+x._2+" \tkey="+x._3+" \tnumRecords="+x._4))
+      getRddKeyPartitions(r).foreach(x => println("partId="+x.partId+" \texecId="+x.execId+" \tkey="+x.key+" \tnumRecords="+x.size))
     }
     
 
-    /**
-     * For an RDD of the form: (key:Int, (recordId:Int, A))
-     * return an array listing the partition each record belongs to.
-     * The values returned contain: (partId, key, recordId)
-     */
-    def getRecordPartition[A](r:RDD[(Int,(Int,A))]): Array[(Int,Int,Int)] = {
-      r.map( x => {
-        val ctx = TaskContext.get()
-        (ctx.partitionId(), x._1, x._2._1)
-      }).collect()
-    }
-
-    
-    /**
-     * For an RDD of the form: (key:Int, (recordId:Int, A))
-     * print out the partition each record belongs to.
-     * The values returned contain: (partId, key, recordId)
-     */
-    def printRecordPartition[A](r:RDD[(Int,(Int,A))]) {
-      getRecordPartition(r).foreach(x => println("recId="+x._3+"  \tkey="+x._2+"\tpartId="+x._1))
-    }
-    
-    
     /**
      * For a grouped keyed RDD of the type:
      * (key:Int, Iterable[(key:Int, (recordId:Int, A))])]
@@ -130,11 +114,11 @@ object KeyPartitioners {
      *  The values returned will be:
      *  (partId, execId, key, numRecords)
      */
-    def getGroupHosts[A](r:RDD[(Int, Iterable[(Int, (Int, A))])]):Array[(Int,Int,Int,Int)] = {
+    def getGroupHosts[A](r:RDD[(Int, Iterable[(Int, (Int, A))])]):Array[KeyPartitionInfo] = {
       val partitionHostsArray = getPartitionHosts(r)
       if (partitionHostsArray.map(_.size).sum <= 0) {
         println("WARNING: the RDD does not appear to be persisted.")
-        return Array.empty[(Int,Int,Int,Int)]
+        return Array.empty[KeyPartitionInfo]
       }
 
       val partToExecId = partitionHostsArray.map( x => {
@@ -144,7 +128,7 @@ object KeyPartitioners {
       r.map( x => {
         val ctx = TaskContext.get()
         val partId = ctx.partitionId()
-        (partId, partToExecId.get(partId).get, x._1, x._2.size)
+        KeyPartitionInfo(partId, partToExecId.get(partId).get, x._1, x._2.size)
       }).collect
     }
     
@@ -156,7 +140,7 @@ object KeyPartitioners {
      * to, and the size of the groups.
      */
     def printGroupHosts[A](r:RDD[(Int, Iterable[(Int, (Int, A))])]) {
-      getGroupHosts(r).foreach(x => println("partId="+x._1+"\texecId="+x._2+"\tkey="+x._3+"\tnumRecords="+x._4))
+      getGroupHosts(r).foreach(x => println("partId="+x.partId+"\texecId="+x.execId+"\tkey="+x.key+"\tnumRecords="+x.size))
     }
         
 }
