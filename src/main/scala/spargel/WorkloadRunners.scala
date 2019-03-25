@@ -366,6 +366,47 @@ object WorkloadRunners {
       
       executionDf
     }
+
+    /**
+        * Run a workload on every entry of an RDD.
+        * The workload to run will depend on the worker doing the
+        * processing identified by its hostname.
+        */
+    def hybridWorkloaderByHostname[A,B](r:RDD[A], wkldMap:Map[String,Workload[A,B]],
+                                        wkldDefault:Workload[A,B]): Long = {
+        val execHosts = r.map(rec => {
+        val hostname = java.net.InetAddress.getLocalHost.getHostName
+        wkldMap.getOrElse(hostname, wkldDefault)(rec)
+        ""
+        })
+        // force the workload to actually execute
+        execHosts.count
+    }
+
+
+    /**
+        * Run a workload on every entry of an RDD.
+        * The workload to run will depend on the worker doing the
+        * processing identified by its hostname.
+        * This method extends {@link hybridWorkloaderByHostname} by an accumulator which measures
+        * the execution time of the workload function and writes it to the accumulator
+        * identified by the task id.
+        */
+    def hybridWorkloaderByHostnameWithAcc[A,B](r:RDD[A], wkldMap:Map[String,Workload[A,B]],
+                                        wkldDefault:Workload[A,B],
+                                        executionTimeAccumulator: ExecutionTimeAccumulator): Long = {
+        val execHosts = r.map(rec => {
+        val ctx = TaskContext.get()
+        val start = System.nanoTime()
+        val hostname = java.net.InetAddress.getLocalHost.getHostName
+        wkldMap.getOrElse(hostname, wkldDefault)(rec)
+        executionTimeAccumulator.add((ctx.taskAttemptId().toString, (System.nanoTime()-start)/
+            (1000*1000)))
+        ""
+        })
+        // force the workload to actually execute
+        execHosts.count
+    }
     
 }
 

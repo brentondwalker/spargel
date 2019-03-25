@@ -1,18 +1,98 @@
 package logging
 
-import org.apache.spark.executor.TaskMetrics
+import org.apache.spark.executor.{InputReadData, TaskMetrics}
 import org.apache.spark.scheduler._
+
 
 case class FlatTask(taskIndex:Long, taskId:Long, stageId:Long, host:String, local:Boolean,
                     sojournTime:Double, waitingTime:Double, serviceTime:Double,
                     deserializationTime:Double, schedulerOverhead:Double,
                     runtime:Double, readTime:Double, locationExecId:String,
                     readType:String, cachedPartition:Boolean) {
-  override def toString:String = {
-    ("taskIndex:"+taskIndex+" taskId:"+taskId+" stageId:"+stageId+" host:"+host+" local:"+local+" sojournTime:"+sojournTime 
-      +" waitingTime:"+waitingTime+" serviceTime:"+serviceTime+" deserializationTime:"+deserializationTime
-      +" schedulerOverhead:"+schedulerOverhead+"runtime:"+runtime)
-  }
+    override def toString:String = {
+        ("taskIndex:"+taskIndex+" taskId:"+taskId+" stageId:"+stageId+" host:"+host+" local:"+local+" sojournTime:"+sojournTime
+          +" waitingTime:"+waitingTime+" serviceTime:"+serviceTime+" deserializationTime:"+deserializationTime
+          +" schedulerOverhead:"+schedulerOverhead+"runtime:"+runtime)
+    }
+}
+
+case class ExtendedFlatTask(launchTime:Long, finishTime: Long, jobId: Long, status: String,
+                            stageId:Long, name: String, taskId:Long,
+                            taskIndex:Long, attempt: Int, executorId: String, duration: Double,
+                            sojournTime: Double, waitingTime:Double, taskLocality: String,
+                            executorDeserializationTime:Double, executorRunTime:Double,
+                            executorCpuTime: Double, executorDeserializeCpuTime: Double,
+                            resultSize: Long, gettingResultTime: Double, jvmGcTime: Long,
+                            resultSerializationTime: Double, memoryBytesSpilled: Long,
+                            diskBytesSpilled: Double, peakExecutionMemory:Long, bytesRead:Long,
+                            recordsRead: Long, readTime: Double, locationExecId: String,
+                            readMethod: String, cachedBlock: Boolean, bytesWritten: Long,
+                            recordsWritten: Long, shuffleRemoteBlocksFetched: Long,
+                            shuffleLocalBlocksFetched: Long, shuffleFetchWaitTime:Long,
+                            remoteBytesRead: Long, shuffleRemoteBytesReadToDisk: Long,
+                            shuffleLocalBytesRead:Long, shuffleRecordsRead: Long,
+                            shuffleBytesWritten: Long, shuffleWriteTime:Long,
+                            shuffleRecordsWritten: Long,stageCompletionTime: Double,
+                            measuredRunTime: Long) {
+
+    def toJson(): String = {
+        this.productIterator.map{
+            case Some(value) => value
+            case None => ""
+            case rest => rest
+        }.mkString(",")
+    }
+}
+
+object ExtendedFlatTask {
+    def apply(task: LogTask, stage: LogStage, runTime: Long): ExtendedFlatTask = {
+        val readParams = task.taskMetrics.get.inputMetrics.readParams
+          .lastOption.getOrElse(InputReadData("-1", "No data read", false, 0L, 0L))
+        ExtendedFlatTask(
+            task.taskInfo.fold(0L)(_.launchTime),
+            task.taskInfo.fold(0L)(_.finishTime),
+            stage.job.fold(-1)(_.jobId),
+            "-", stage.stageId, stage.stageInfo.map(_.name).getOrElse("Not defined"),
+            task.taskInfo.fold(-1L)(_.taskId), task.taskInfo.fold(-1L)(_.index),
+            stage.stageInfo.fold(-1)(_.attemptNumber()),
+            task.taskInfo.fold("-1")(_.executorId),
+            task.taskInfo.fold(0L)(_.duration),
+            task.jobEnd.getOrElse(0L) - task.submissionTime.getOrElse(0L),
+            task.taskInfo.fold(0L)(_.launchTime) - task.submissionTime.getOrElse(0L),
+            task.taskInfo.fold("Not set")(_.taskLocality.toString),
+            task.taskMetrics.fold(0L)(_.executorDeserializeTime),
+            task.taskMetrics.fold(0L)(_.executorRunTime),
+            task.taskMetrics.fold(0L)(_.executorCpuTime),
+            task.taskMetrics.fold(0L)(_.executorDeserializeCpuTime),
+            task.taskMetrics.fold(0L)(_.resultSize),
+            task.taskInfo.fold(0L)(_.gettingResultTime),
+            task.taskMetrics.fold(0L)(_.jvmGCTime),
+            task.taskMetrics.fold(0L)(_.resultSerializationTime),
+            task.taskMetrics.fold(0L)(_.memoryBytesSpilled),
+            task.taskMetrics.fold(0L)(_.diskBytesSpilled),
+            task.taskMetrics.fold(0L)(_.peakExecutionMemory),
+            task.taskMetrics.fold(0L)(_.inputMetrics.bytesRead),
+            task.taskMetrics.fold(0L)(_.inputMetrics.recordsRead),
+            math.max(readParams.readTime, 0L),
+            readParams.locationExecId,
+            readParams.readMethod,
+            readParams.cachedBlock,
+            task.taskMetrics.fold(0L)(_.outputMetrics.bytesWritten),
+            task.taskMetrics.fold(0L)(_.outputMetrics.recordsWritten),
+            task.taskMetrics.fold(0L)(_.shuffleReadMetrics.remoteBlocksFetched),
+            task.taskMetrics.fold(0L)(_.shuffleReadMetrics.localBlocksFetched),
+            task.taskMetrics.fold(0L)(_.shuffleReadMetrics.fetchWaitTime),
+            task.taskMetrics.fold(0L)(_.shuffleReadMetrics.remoteBytesRead),
+            task.taskMetrics.fold(0L)(_.shuffleReadMetrics.remoteBytesReadToDisk),
+            task.taskMetrics.fold(0L)(_.shuffleReadMetrics.localBytesRead),
+            task.taskMetrics.fold(0L)(_.shuffleReadMetrics.recordsRead),
+            task.taskMetrics.fold(0L)(_.shuffleWriteMetrics.bytesWritten),
+            task.taskMetrics.fold(0L)(_.shuffleWriteMetrics.writeTime),
+            task.taskMetrics.fold(0L)(_.shuffleWriteMetrics.recordsWritten),
+            stage.stageInfo.fold(-1.0)(_.completionTime.fold(-1.0)(_.toDouble)),
+            runTime
+        )
+    }
 }
 
 // More detailed FlatTask class

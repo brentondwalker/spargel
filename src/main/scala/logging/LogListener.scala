@@ -2,15 +2,17 @@ package logging
 
 import org.apache.spark.executor.{InputReadData, TaskMetrics}
 import org.apache.spark.scheduler._
+import java.io._
 
 /**
   * This class should be added as listener to a SparkContext
   * and will track the metrics of executed tasks.
   */
-class LogListener extends SparkListener {
+case class LogListener() extends SparkListener {
   var jobIdsToJobs: scala.collection.mutable.Map[Int, LogJob] = scala.collection.mutable.Map.empty[Int, LogJob]
   var stageIdToStage: scala.collection.mutable.Map[Int, LogStage] = scala.collection.mutable.Map.empty[Int, LogStage]
   var jobIdToStageIds: scala.collection.mutable.Map[Int, Seq[Int]] = scala.collection.mutable.Map.empty[Int, Seq[Int]]
+  var executionTimeAccumulator: Option[ExecutionTimeAccumulator] = None
   
   // accessors for resulting data return immutable objects
   def getJobData() = { scala.collection.immutable.Map() ++ jobIdsToJobs }
@@ -18,6 +20,7 @@ class LogListener extends SparkListener {
   def getJobStages() = { scala.collection.immutable.Map() ++ jobIdToStageIds }
 
   override def onJobStart(jobStart: SparkListenerJobStart) {
+    print(jobStart.jobId)
     val tmpJob = LogJob(jobStart.jobId)
     tmpJob.submissionTime = Some(jobStart.time)
     tmpJob.numStages = jobStart.stageInfos.size
@@ -72,15 +75,24 @@ class LogListener extends SparkListener {
       if(stage.nonEmpty) {
         for((taskIndex, task) <- stage.get.tasks) {
           task.jobEnd = Some(jobEnd.time)
+          stage.get.job = job
         }
       }
     }
   }
 
   override def onStageSubmitted(stageSubmitted: SparkListenerStageSubmitted): Unit = {
-    val stage = LogStage(stageSubmitted.stageInfo.stageId)
-    stage.stageInfo = Some(stageSubmitted.stageInfo)
-    this.stageIdToStage += stage.stageId -> stage
+    val currStage = stageIdToStage.get(stageSubmitted.stageInfo.stageId)
+    if(currStage.isEmpty) {
+      println("Stage id unknown in onStageSubmitted. Should be set at this position.")
+      val stage = LogStage(stageSubmitted.stageInfo.stageId)
+      stage.stageInfo = Some(stageSubmitted.stageInfo)
+      this.stageIdToStage += stage.stageId -> stage
+    }
+    else {
+      val stage = currStage.get
+      stage.stageInfo = Some(stageSubmitted.stageInfo)
+    }
   }
 
   /**
@@ -112,5 +124,66 @@ class LogListener extends SparkListener {
       }
     }
     tasks
+  }
+
+  def readParamsWithMostData(readParams: Seq[InputReadData]): InputReadData = {
+    readParams.foldRight(InputReadData("", "Nothing read", cachedBlock = false, -1, -1))(
+      (last, curr) => if (last.bytesRead > curr.bytesRead) last else curr)
+  }
+
+  def addExecutionTimeAccumulator(executionTimeAccumulator: ExecutionTimeAccumulator): Unit = {
+    this.executionTimeAccumulator = Some(executionTimeAccumulator)
+  }
+
+  def getCsvMetrics() = {
+    var resultCSV = getCsvLabelLine()
+
+    val executionStats = this.executionTimeAccumulator.fold(Map.empty[String, Long])(_.value.stats)
+    var tasks:scala.collection.mutable.Seq[FlatTask] = scala.collection.mutable.Seq[FlatTask]()
+    for((stageId,v) <- stageIdToStage) {
+      for((taskIndex,task) <- v.tasks) {
+        val runTime = executionStats.getOrElse(task.taskInfo.fold(-1L)(_.taskId).toString, 0L)
+        if(task.taskInfo.nonEmpty) {
+          val extendedTask = ExtendedFlatTask(task, v, runTime)
+          resultCSV += s"${extendedTask.toJson()}"
+        }
+      }
+    }
+    resultCSV
+  }
+
+  def writeCsvToFile(filepath: String): Unit = {
+    val pw = new PrintWriter(new File(filepath))
+    pw.write(getCsvLabelLine())
+    val executionStats = this.executionTimeAccumulator.fold(Map.empty[String, Long])(_.value.stats)
+//    var tasks:scala.collection.mutable.Seq[FlatTask] = scala.collection.mutable.Seq[FlatTask]()
+    for((stageId,v) <- stageIdToStage) {
+      for((taskIndex,task) <- v.tasks) {
+        val runTime = executionStats.getOrElse(task.taskInfo.fold(-1L)(_.taskId).toString, 0L)
+        if(task.taskInfo.nonEmpty) {
+          val extendedTask = ExtendedFlatTask(task, v, runTime)
+          pw.write(s"${extendedTask.toJson()}\n")
+        }
+      }
+    }
+  }
+
+  def getExecutionTimeAccumulator(): ExecutionTimeAccumulator = {
+    if (this.executionTimeAccumulator.isEmpty)
+      this.executionTimeAccumulator = Some(ExecutionTimeAccumulator(ExecutionTimeStat()))
+    this.executionTimeAccumulator.get
+  }
+
+  def getCsvLabelLine(): String = {
+    "launchTime,finishTime,jobId,status,stageId,name,taskId,index,attempt,executorId," +
+    "duration,sojournTime,waitingTime," +
+    "taskLocality,executorDeserializeTime,executorRunTime,executorCpuTime," +
+    "executorDeserializeCpuTime,resultSize,gettingResultTime," +
+    "jvmGcTime,resultSerializationTime,memoryBytesSpilled,diskBytesSpilled," +
+    "peakExecutionMemory,bytesRead,recordsRead,readTime,locationExecId,readMethod,cachedBlock," +
+    "bytesWritten, recordsWritten,shuffleRemoteBlocksFetched,shuffleLocalBlocksFetched," +
+    "shuffleFetchWaitTime, remoteBytesRead,shuffleRemoteBytesReadToDisk,shuffleLocalBytesRead," +
+    "shuffleRecordsRead, shuffleBytesWritten,shuffleWriteTime,shuffleRecordsWritten," +
+    "stageCompletionTime,measuredRunTime\n"
   }
 }
