@@ -63,8 +63,14 @@ object KeyPartitioners {
      * compressible, and more expensive to move between executors.
      */
     def getBigKeyedRandomRdd(sc:SparkContext, numRecords:Int, recordSize:Int, numPartitions:Int, numKeys:Int, seed:Int=1):RDD[(Int,(Int,Array[Byte]))] = {
-      // seed the RNG, in case this RDD gets recomputed we get the same results.
+      // the RNG that will be used inside the executors
       var rng:scala.util.Random = null
+      
+      // the HashPartitioner is deterministic, so if we use the same set of
+      // keys in each run, mapping of keys to executors will always be the same.
+      val keysRng = new scala.util.Random(seed)
+      val keysMapping = (0 until numKeys).toList.map( x => (x, keysRng.nextInt()) ).toMap
+      
       val mybigrdd = sc.parallelize(1 to numRecords, numPartitions).map { i =>
         i
       }.map( i => {
@@ -77,7 +83,7 @@ object KeyPartitioners {
           val partId = ctx.partitionId()
           rng = new scala.util.Random(seed*partId)
         }
-        (rng.nextInt(numKeys), (i, Array.fill[Byte](recordSize)((scala.util.Random.nextInt(256) - 128).toByte)) )
+        (keysMapping(rng.nextInt(numKeys)), (i, Array.fill[Byte](recordSize)((scala.util.Random.nextInt(256) - 128).toByte)) )
       })
       return mybigrdd
     }
@@ -262,7 +268,6 @@ object KeyPartitioners {
      */
     def groupbyExperiment(sc:SparkContext, numRecords:Int, recordSize:Int, numPartitions:Int, numKeys:Int, numseeds:Int=1, startseed:Int=1): (Array[Array[Int]],Array[Array[Int]]) = {
       val numExecutors = sc.statusTracker.getExecutorInfos.length - 1
-      println("numExecutors "+numExecutors)
       val numRecordsIn = new Array[Array[Int]](numseeds)
       val numRecordsOut = new Array[Array[Int]](numseeds)
       
@@ -279,7 +284,7 @@ object KeyPartitioners {
           bmgrdd.count
           val ghosts = getGroupHosts(bmgrdd).map(x => (x.key,(x.execId,x.size))).toMap
           
-          for (k <- 0 until numKeys) {
+          for (k <- ghosts.keys) {
             for (ex <- 0 until numExecutors) {
               // if we are the executor holding this key after grouping,
               // how many records with this key did we have to pull from elsewhere
