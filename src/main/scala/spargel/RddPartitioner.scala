@@ -11,6 +11,14 @@ import scala.math.random
 object RddPartitioner {
 
     /**
+     * Check the version of scala being used internally.
+     *
+     */
+    def checkScalaVersion(sc:SparkContext) {
+        println(util.Properties.versionString)
+    }
+
+    /**
      * Generate a huge RDD.  Each record is a tuple containing an integer index
      * and a (huge) array of zeros.
      * 

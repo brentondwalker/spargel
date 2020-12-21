@@ -28,6 +28,8 @@ import scala.math.random
 import scala.collection.mutable.ListBuffer
 
 
+// bin/spark-submit --total-executor-cores 6 --class spargel.WorkloadArrivals ~/spargel/target/scala-2.12/spargel_2.12-2.0.jar -b -w 6 -t 6 -n 100 -A x 0.5 -S x 1.0
+
 object WorkloadArrivals {
   
   
@@ -45,6 +47,7 @@ object WorkloadArrivals {
 		cli_options.addOption("n", "numsamples", true, "number of jobs to run");
 		cli_options.addOption("s", "sequential-jobs", false, "submit the jobs sequentially instead of from separate threads");
 		cli_options.addOption("p", "persisted-rdd", false, "jobs are tied to particular executors, subject to spark.locality.wait configuration");
+                cli_options.addOption("b", "barrier-rdd", false, "jobs will be executed in barrier mode, with the requirement that all tasks start simultaneously");
 
 		// I'm trying to re-use code here, but using OptionBuilder from commons-cli 1.2
 		// in scala is problematic because it has these static methods and the have to
@@ -179,8 +182,52 @@ object WorkloadArrivals {
       1
     }.count()
   }
-  
-    /**
+
+
+  /**
+   * Run s slices on the Spark cluster in Barrier Mode.
+   * https://spark.apache.org/docs/latest/api/java/org/apache/spark/rdd/RDDBarrier.html
+   * This requires that all tasks of the job start simultaneously.
+   * Split-Merge is usually seen as a constraint on job departure, but this is a constraint
+   * on starting job service that should be equivalent in some cases.  For example when
+   * the the number of tasks equals the number of workers.
+   * In barrier mode, one cannot have the number of tasks be more than the number
+   * of workers.
+   * 
+   * Within each slice we just generate random numbers for the specified amount of time.
+   * This is from the SparkPi demo program, generating random numbers in a square.
+   * Each slice returns 1, and we do a count() to force Spark to execute the slices.
+   * Therefore the shuffle/reduce step is trivial.
+   * 
+   * Note: the stdout produced from these println() will appear on the stdout of the workers,
+   *       not the driver.  I could just as well remove it.
+   *       
+   *  Note: I would like to pass in the serviceProcess instead of a list of serviceTimes, but since
+   *        this is parallelized I ran into the problem that in some cases we would be passing
+   *        identical RNGs to the workers, and generating identical service times.
+   */
+  def runEmptyBarrierSlices(spark:SparkContext, slices: Int, serviceTimes: List[Double], jobId: Int): Long = {
+    //println("serviceTimes = "+serviceTimes)
+    spark.parallelize(1 to slices, slices).barrier().mapPartitions { i =>
+      val taskId = i.next()
+      val jobLength = serviceTimes(taskId-1)
+      val startTime = java.lang.System.currentTimeMillis()
+      val targetStopTime = startTime + 1000*jobLength
+			println("    +++ TASK "+jobId+"."+taskId+" START: "+startTime)
+			while (java.lang.System.currentTimeMillis() < targetStopTime) {
+				val x = random * 2 - 1
+				val y = random * 2 - 1
+			}
+
+      val stopTime = java.lang.System.currentTimeMillis()
+      println("    --- TASK "+jobId+"."+taskId+" STOP: "+stopTime)
+      println("    === TASK "+jobId+"."+taskId+" ELAPSED: "+(stopTime-startTime))
+      Iterator(1)
+    }.count()
+  }
+
+
+  /**
    * Run s slices on the Spark cluster, with service times drawn
    * from the given serviceProcess.
    * 
@@ -266,6 +313,7 @@ object WorkloadArrivals {
 		val numWorkers = if (options.hasOption("w")) options.getOptionValue("w").toInt else 1
 		val serialJobs = options.hasOption("s")
 		val persistedRdd = options.hasOption("p")
+                val barrierRdd = options.hasOption("b")  // for now, option "p" will override option "b"
 		
 	  val conf = new SparkConf()
 	    .setAppName("ThreadedMapJobs")
@@ -281,7 +329,12 @@ object WorkloadArrivals {
 		// check how many cores were actually allocated
 		// one core in the list will be the driver.  The rest should be workers
 		// http://stackoverflow.com/questions/39162063/spark-how-many-executors-and-cores-are-allocated-to-my-spark-job
-		val coresAllocated = spark.getExecutorMemoryStatus.map(_._1).toList.length - 1
+		//val coresAllocated = spark.getExecutorMemoryStatus.map(_._1).toList.length - 1
+                // the above no longer works in 3.0.x.
+                // new solution
+                val env: org.apache.spark.SparkEnv = spark.getClass.getMethod("env").invoke(spark).asInstanceOf[org.apache.spark.SparkEnv]
+                val coresAllocated = env.blockManager.master.getStorageStatus.length - 1
+                
 		println("*** coresAllocated = "+coresAllocated+" ***")
     if (coresAllocated != numWorkers) {
       println("ERROR: could only allocate "+coresAllocated+" workers ("+numWorkers+" requested) - exiting.")
@@ -316,6 +369,8 @@ object WorkloadArrivals {
 					// These are actually generated in different threads, but it's the same process, same JVM.
 				  if (persistedRdd) {
 				    runEmptyPersistedSlices(r, List.tabulate(slicesPerJob)(n => serviceProcess()), jobId)
+				  } else if (barrierRdd) {
+  					runEmptyBarrierSlices(spark, slicesPerJob, List.tabulate(slicesPerJob)(n => serviceProcess()), jobId)
 				  } else {
   					runEmptySlices(spark, slicesPerJob, List.tabulate(slicesPerJob)(n => serviceProcess()), jobId)
 				  }
