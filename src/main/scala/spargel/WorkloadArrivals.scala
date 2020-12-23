@@ -48,6 +48,7 @@ object WorkloadArrivals {
 		cli_options.addOption("s", "sequential-jobs", false, "submit the jobs sequentially instead of from separate threads");
 		cli_options.addOption("p", "persisted-rdd", false, "jobs are tied to particular executors, subject to spark.locality.wait configuration");
                 cli_options.addOption("b", "barrier-rdd", false, "jobs will be executed in barrier mode, with the requirement that all tasks start simultaneously");
+                cli_options.addOption("g", "staged", false, "jobs are two-staged, with a groupBy in between to force a shuffle");
 
 		// I'm trying to re-use code here, but using OptionBuilder from commons-cli 1.2
 		// in scala is problematic because it has these static methods and the have to
@@ -185,6 +186,45 @@ object WorkloadArrivals {
 
 
   /**
+   * Run s slices on the Spark cluster, with service times drawn
+   * from the given serviceProcess.
+   *
+   * This version runs tasks that have two stages with a shuffle-forced synchronization point.
+   * 
+   * Within each slice we just generate random numbers for the specified amount of time.
+   * This is from the SparkPi demo program, generating random numbers in a square.
+   * Each slice returns 1, and we do a count() to force Spark to execute the slices.
+   * Therefore the shuffle/reduce step is trivial.
+   * 
+   * Note: the stdout produced from these println() will appear on the stdout of the workers,
+   *       not the driver.  I could just as well remove it.
+   *       
+   *  Note: I would like to pass in the serviceProcess instead of a list of serviceTimes, but since
+   *        this is parallelized I ran into the problem that in some cases we would be passing
+   *        identical RNGs to the workers, and generating identical service times.
+   */
+  def runEmptyStagedSlices(spark:SparkContext, slices: Int, serviceTimes: List[Double], jobId: Int): Long = {
+    //println("serviceTimes = "+serviceTimes)
+    spark.parallelize(1 to slices, slices).groupBy({ x => x }).map { tk =>
+      val taskId = tk._1
+      val jobLength = serviceTimes(taskId-1)
+      val startTime = java.lang.System.currentTimeMillis()
+      val targetStopTime = startTime + 1000*jobLength
+			println("    +++ TASK "+jobId+"."+taskId+" START: "+startTime)
+			while (java.lang.System.currentTimeMillis() < targetStopTime) {
+				val x = random * 2 - 1
+				val y = random * 2 - 1
+			}
+
+      val stopTime = java.lang.System.currentTimeMillis()
+      println("    --- TASK "+jobId+"."+taskId+" STOP: "+stopTime)
+      println("    === TASK "+jobId+"."+taskId+" ELAPSED: "+(stopTime-startTime))
+      1
+    }.groupBy({ x => x }).map({ tk => 1 }).count()
+  }
+
+
+  /**
    * Run s slices on the Spark cluster in Barrier Mode.
    * https://spark.apache.org/docs/latest/api/java/org/apache/spark/rdd/RDDBarrier.html
    * This requires that all tasks of the job start simultaneously.
@@ -314,6 +354,7 @@ object WorkloadArrivals {
 		val serialJobs = options.hasOption("s")
 		val persistedRdd = options.hasOption("p")
                 val barrierRdd = options.hasOption("b")  // for now, option "p" will override option "b"
+                val stagedSlices = options.hasOption("g")  // for now, option "p" and "b" will override "g"
 		
 	  val conf = new SparkConf()
 	    .setAppName("ThreadedMapJobs")
@@ -332,15 +373,16 @@ object WorkloadArrivals {
 		//val coresAllocated = spark.getExecutorMemoryStatus.map(_._1).toList.length - 1
                 // the above no longer works in 3.0.x.
                 // new solution
+                // this gets the number of executors.  We now want the number of cores.
                 val env: org.apache.spark.SparkEnv = spark.getClass.getMethod("env").invoke(spark).asInstanceOf[org.apache.spark.SparkEnv]
                 val coresAllocated = env.blockManager.master.getStorageStatus.length - 1
                 
 		println("*** coresAllocated = "+coresAllocated+" ***")
-    if (coresAllocated != numWorkers) {
-      println("ERROR: could only allocate "+coresAllocated+" workers ("+numWorkers+" requested) - exiting.")
-      spark.stop()
-      System.exit(1)
-    }
+    //if (coresAllocated != numWorkers) {
+    //  println("ERROR: could only allocate "+coresAllocated+" workers ("+numWorkers+" requested) - exiting.")
+    //  spark.stop()
+    //  System.exit(1)
+    //}
     
 		var jobsRun = 0
 		var doneSignal: CountDownLatch = new CountDownLatch(totalJobs)
@@ -371,7 +413,9 @@ object WorkloadArrivals {
 				    runEmptyPersistedSlices(r, List.tabulate(slicesPerJob)(n => serviceProcess()), jobId)
 				  } else if (barrierRdd) {
   					runEmptyBarrierSlices(spark, slicesPerJob, List.tabulate(slicesPerJob)(n => serviceProcess()), jobId)
-				  } else {
+				  } else if (stagedSlices) {
+       					runEmptyStagedSlices(spark, slicesPerJob, List.tabulate(slicesPerJob)(n => serviceProcess()), jobId) 
+                                  } else {
   					runEmptySlices(spark, slicesPerJob, List.tabulate(slicesPerJob)(n => serviceProcess()), jobId)
 				  }
 					
