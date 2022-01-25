@@ -83,11 +83,11 @@ class LogListener extends SparkListener {
   }
 
   /**
-    * This function uses the inner status holders of jobs, tasks and stages
-    * to create a sequence of case class FlatTask objects which can be
-    * converted to a spark DataFrame.
-    * @return Sequence of case class FlatTask
-    */
+   * This function uses the inner status holders of jobs, tasks and stages
+   * to create a sequence of case class FlatTask objects which can be
+   * converted to a spark DataFrame.
+   * @return Sequence of case class FlatTask
+   */
   def getTaskMetrics(): scala.collection.mutable.Seq[FlatTask] = {
     var tasks:scala.collection.mutable.Seq[FlatTask] = scala.collection.mutable.Seq[FlatTask]()
     for((stageId,v) <- stageIdToStage) {
@@ -100,13 +100,61 @@ class LogListener extends SparkListener {
           task.taskMetrics.get.asInstanceOf[TaskMetrics].executorDeserializeTime,
           0.0, task.taskMetrics.get.asInstanceOf[TaskMetrics].executorCpuTime,
           0 // Represents the time needed to read a RDD. Only possible if using
-            // a modified spark version
+          // a modified spark version
           //task.taskMetrics.get.asInstanceOf[TaskMetrics].inputMetrics.readTime
         )
       }
     }
     tasks
   }
+
+  /**
+   * This function uses the inner status holders of jobs, tasks and stages
+   * to create a sequence of case class FlatTaskFull objects which can be
+   * converted to a spark DataFrame.
+   * @return Sequence of case class FlatTaskFull
+   */
+  def getFullTaskMetrics(): scala.collection.mutable.Seq[FlatTaskFull] = {
+    var tasks:scala.collection.mutable.Seq[FlatTaskFull] = scala.collection.mutable.Seq[FlatTaskFull]()
+    for((stageId,v) <- stageIdToStage) {
+      for((taskId,task) <- v.tasks) {
+        tasks :+= FlatTaskFull(taskId, stageId, task.taskInfo.get.executorId, task.taskInfo.get.host,
+          task.taskInfo.get.taskLocality == TaskLocality.PROCESS_LOCAL,
+          task.jobEnd.get - task.submissionTime.get,
+          task.taskInfo.get.launchTime - task.submissionTime.get,
+          task.taskInfo.get.finishTime - task.taskInfo.get.launchTime,
+          task.taskMetrics.get.asInstanceOf[TaskMetrics].executorDeserializeTime,
+          task.taskMetrics.get.asInstanceOf[TaskMetrics].executorDeserializeCpuTime,
+          task.taskMetrics.get.asInstanceOf[TaskMetrics].executorRunTime,
+          task.taskMetrics.get.asInstanceOf[TaskMetrics].executorCpuTime,
+          task.taskMetrics.get.asInstanceOf[TaskMetrics].resultSize,
+          task.taskMetrics.get.asInstanceOf[TaskMetrics].jvmGCTime,
+          task.taskMetrics.get.asInstanceOf[TaskMetrics].resultSerializationTime,
+          task.taskMetrics.get.asInstanceOf[TaskMetrics].memoryBytesSpilled,
+          task.taskMetrics.get.asInstanceOf[TaskMetrics].diskBytesSpilled,
+          task.taskMetrics.get.asInstanceOf[TaskMetrics].peakExecutionMemory,
+          task.taskMetrics.get.asInstanceOf[TaskMetrics].inputMetrics.bytesRead,
+          task.taskMetrics.get.asInstanceOf[TaskMetrics].inputMetrics.recordsRead,
+          task.taskMetrics.get.asInstanceOf[TaskMetrics].outputMetrics.bytesWritten,
+          task.taskMetrics.get.asInstanceOf[TaskMetrics].outputMetrics.recordsWritten,
+          task.taskMetrics.get.asInstanceOf[TaskMetrics].shuffleReadMetrics.remoteBlocksFetched,
+          task.taskMetrics.get.asInstanceOf[TaskMetrics].shuffleReadMetrics.localBlocksFetched,
+          task.taskMetrics.get.asInstanceOf[TaskMetrics].shuffleReadMetrics.totalBlocksFetched,
+          task.taskMetrics.get.asInstanceOf[TaskMetrics].shuffleReadMetrics.fetchWaitTime,
+          task.taskMetrics.get.asInstanceOf[TaskMetrics].shuffleReadMetrics.remoteBytesRead,
+          task.taskMetrics.get.asInstanceOf[TaskMetrics].shuffleReadMetrics.localBytesRead,
+          task.taskMetrics.get.asInstanceOf[TaskMetrics].shuffleReadMetrics.totalBytesRead,
+          task.taskMetrics.get.asInstanceOf[TaskMetrics].shuffleReadMetrics.remoteBytesReadToDisk,
+          task.taskMetrics.get.asInstanceOf[TaskMetrics].shuffleReadMetrics.recordsRead,
+          task.taskMetrics.get.asInstanceOf[TaskMetrics].shuffleWriteMetrics.bytesWritten,
+          task.taskMetrics.get.asInstanceOf[TaskMetrics].shuffleWriteMetrics.writeTime,
+          task.taskMetrics.get.asInstanceOf[TaskMetrics].shuffleWriteMetrics.recordsWritten
+        )
+      }
+    }
+    tasks
+  }
+
 
   // Following inner classes keeps track of jobs, stages and tasks.
   case class LogJob(jobId:Int){
