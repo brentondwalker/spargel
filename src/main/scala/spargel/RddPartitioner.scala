@@ -176,6 +176,30 @@ object RddPartitioner {
       return myrdd
     }
 
+
+    def getUniformKeyedRdd(sc:SparkContext, numPartitions:Int, numKeys:Int, numRecords:Long, recordSize:Int): RDD[(Int, Array[Byte])] = {
+      if ((numRecords / numPartitions) > Integer.MAX_VALUE) {
+        println("ERROR: this function requires that numRecords/numPartitions be less than MAXINT.")
+        return sc.emptyRDD[(Int, Array[Byte])]
+      }
+      var protoRdd: RDD[Int] = sc.emptyRDD[Int]
+      var numRecRemaining = numRecords
+      var batchSize:Int = (numRecords / numPartitions).toInt + 1
+      while (numRecRemaining > 0) {
+        if (numRecRemaining < batchSize) {
+          batchSize = numRecRemaining.toInt
+        }
+        protoRdd = protoRdd.union(sc.parallelize(1 to batchSize, numSlices = 1))
+        numRecRemaining -= batchSize
+      }
+      val myBigRdd = protoRdd.map { i =>
+        (scala.util.Random.nextInt(numKeys), Array.fill[Byte](recordSize)((scala.util.Random.nextInt(256) - 128).toByte))
+      }
+      myBigRdd.foreachPartition( p => p.take(10).foreach(println))
+
+      return myBigRdd
+    }
+
     
     /**
      * For each partition print out the worker where it is stored.

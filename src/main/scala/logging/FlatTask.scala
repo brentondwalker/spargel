@@ -5,7 +5,7 @@ case class FlatTask(taskId: Long, stageId: Long, host: String, local: Boolean,
                     deserializationTime: Double, schedulerOverhead: Double,
                     runtime: Double, readTime:Double) {
   override def toString = {
-    ("taskId:"+taskId+" stageId:"+stageId+" host:"+host+" local:"+local+" sojournTime:"+sojournTime 
+    ("taskId:"+taskId+" stageId:"+stageId+" host:"+host+" local:"+local+" sojournTime:"+sojournTime
       +" waitingTime:"+waitingTime+" serviceTime:"+serviceTime+" deserializationTime:"+deserializationTime
       +" schedulerOverhead:"+schedulerOverhead+"runtime:"+runtime)
   }
