@@ -22,7 +22,7 @@ object KeyedRecordsWorkloads {
    * therefore depend on the size and content of the Array.
    *
    */
-  type KeyedRecordsWorkload = Workload[(Long,Array[Array[Byte]]), Long]
+  type KeyedRecordsWorkload = Workload[(Int,Array[Array[Byte]]), Long]
 
   /**
    * Compare two arrays of bytes as if they were the Bytes of an
@@ -85,5 +85,5 @@ object KeyedRecordsWorkloads {
       0
     }
   }
-
+  
 }
