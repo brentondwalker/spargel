@@ -1,7 +1,7 @@
 package spargel
 
 import Workloads._
-import scala.reflect.ClassTag
+//import scala.reflect.ClassTag
 import scala.util.Sorting._
 
 /**
@@ -70,7 +70,7 @@ object KeyedRecordsWorkloads {
   val IterativeMaxWorkload:KeyedRecordsWorkload = {
     (rec) => {
       var mx:Array[Byte] = rec._2(0).clone()
-      rec._2.foreach(x => mx = if (compareRecords(x, mx) > 0) x.clone() else mx)
+      rec._2.foreach(x => mx = if (compareRecords(mx, x)) x.clone() else mx)
       mx(mx.length-1).toLong
     }
   }
@@ -81,7 +81,7 @@ object KeyedRecordsWorkloads {
    */
   val SortedWorkload:KeyedRecordsWorkload = {
     (rec) => {
-      stableSort(rec._2, compareRecords(_,_))(ClassTag[Array[Array[Byte]]])
+      stableSort(rec._2, compareRecords(_,_)) //(ClassTag[Array[Array[Byte]]])
       0
     }
   }
