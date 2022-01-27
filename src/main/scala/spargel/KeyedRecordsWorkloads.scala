@@ -85,5 +85,5 @@ object KeyedRecordsWorkloads {
       0
     }
   }
-  
+
 }

@@ -176,27 +176,39 @@ object RddPartitioner {
       return myrdd
     }
 
-
+  /**
+   * Get a big pair RDD with integer keys randomly sampled in some range, and values that
+   * are (small) arrays of Byte.  Arbitrarily creating huge RDDs with more than MAX_INT
+   * records is not automatic, so it iteratively creates pieces and combines them with union.
+   * It tries to use as few unions as possible, though.  If you create this one partition
+   * at a time, and then try to union, say, 1024 RDDs, the DAG gets too complex and it fails.
+   *
+   * @param sc
+   * @param numPartitions
+   * @param numKeys
+   * @param numRecords
+   * @param recordSize
+   * @return
+   */
     def getUniformKeyedRdd(sc:SparkContext, numPartitions:Int, numKeys:Int, numRecords:Long, recordSize:Int): RDD[(Int, Array[Byte])] = {
       if ((numRecords / numPartitions) > Integer.MAX_VALUE) {
         println("ERROR: this function requires that numRecords/numPartitions be less than MAXINT.")
         return sc.emptyRDD[(Int, Array[Byte])]
       }
       var protoRdd: RDD[Int] = sc.emptyRDD[Int]
+      val maxbatch = 2000000000l
       var numRecRemaining = numRecords
-      var batchSize:Int = (numRecords / numPartitions).toInt + 1
+      var partSize:Int = (numRecords / numPartitions).toInt + 1
       while (numRecRemaining > 0) {
-        if (numRecRemaining < batchSize) {
-          batchSize = numRecRemaining.toInt
-        }
-        protoRdd = protoRdd.union(sc.parallelize(1 to batchSize, numSlices = 1))
-        numRecRemaining -= batchSize
+        // fit as many partitions as possible into an iteration
+        val nparts = if (numRecRemaining < maxbatch)  (numRecRemaining/partSize) else (maxbatch/partSize)
+        protoRdd = protoRdd.union(sc.parallelize(1 to (nparts*partSize).toInt, numSlices = nparts.toInt))
+        numRecRemaining -= nparts*partSize
+        if (numRecRemaining < partSize) partSize = numRecRemaining.toInt
       }
       val myBigRdd = protoRdd.map { i =>
         (scala.util.Random.nextInt(numKeys), Array.fill[Byte](recordSize)((scala.util.Random.nextInt(256) - 128).toByte))
       }
-      myBigRdd.foreachPartition( p => p.take(10).foreach(println))
-
       return myBigRdd
     }
 
