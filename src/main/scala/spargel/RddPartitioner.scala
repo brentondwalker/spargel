@@ -228,8 +228,16 @@ object RddPartitioner {
         }
       }
     }
-    
-    
+
+
+  case class PartitionHostInfo(rddId:Int, partId:Int, execId:String, host:String, memsize:Long, disksize:Long,
+                               storageLevel:String, storageShmd:Int, replicas:Int) {
+    override def toString = {
+      ("rddId:"+rddId+" partId:"+partId+" execId:"+execId+" host:"+host
+        +" memsize:"+memsize+" disksize:"+disksize+" storageLevel:"+storageLevel
+        +" storageShmd:"+storageShmd+" replicas:"+replicas)
+    }
+  }
     /**
      * Get data on the executors/hosts where each partition of an RDD is stored.
      * Returns an array of lists of tuples containing:
@@ -237,20 +245,22 @@ object RddPartitioner {
      * 
      * Note that a partition /may/ be stored multiple places.
      */
-    def getPartitionHosts[A](r:RDD[A]): Array[Iterable[(Int, Int, String, String, Long, Long, StorageLevel)]] = {
+    def getPartitionHosts[A](r:RDD[A]): Array[Iterable[PartitionHostInfo]] = {
       val bmm = SparkEnv.get.blockManager.master
       val rddId = r.id
       val nparts = r.getNumPartitions
       
       (0 until nparts).toArray
-        .map( i => bmm.getBlockStatus(RDDBlockId(rddId,i), true)
-                      .map( x => (rddId,
-                                  i,
-                                  x._1.executorId,
-                                  x._1.host,
-                                  x._2.memSize,
-                                  x._2.diskSize,
-                                  x._2.storageLevel) ))
+        .map( i => bmm.getBlockStatus(RDDBlockId(rddId,i), askSlaves=true)
+                      .map( x => PartitionHostInfo(rddId,
+                        i,
+                        x._1.executorId,
+                        x._1.host,
+                        x._2.memSize,
+                        x._2.diskSize,
+                        x._2.storageLevel.description,
+                        x._2.storageLevel.toInt,
+                        x._2.storageLevel.replication) ))
     }
     
     
