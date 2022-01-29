@@ -1,6 +1,6 @@
 package logging
 
-case class FlatTaskFull(taskId: Long, stageId: Long, executorId: String, host: String, local: Boolean,
+case class FlatTaskFull(taskId: Long, stageId: Long, taskIndex: Int, executorId: String, host: String, local: Boolean,
                         sojournTime: Double, waitingTime:Double, serviceTime: Double,
                         executorDeserializeTime: Long,
                         executorDeserializeCpuTime: Long,
@@ -29,7 +29,7 @@ case class FlatTaskFull(taskId: Long, stageId: Long, executorId: String, host: S
                         shuffleWriteTime: Long,
                         shuffleRecordsWritten: Long) {
   override def toString = {
-    ("taskId:"+taskId+" stageId:"+stageId+" executorId:"+executorId+" host:"+host+" local:"+local+" sojournTime:"+sojournTime
+    ("taskId:"+taskId+" stageId:"+stageId+" taskIndex:"+taskIndex+" executorId:"+executorId+" host:"+host+" local:"+local+" sojournTime:"+sojournTime
       +" waitingTime:"+waitingTime+" serviceTime:"+serviceTime+" executorDeserializeTime:"+executorDeserializeTime
       +" executorRunTime:"+executorRunTime+" executorCpuTime:"+executorCpuTime)
   }

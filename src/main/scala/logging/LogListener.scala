@@ -118,7 +118,7 @@ class LogListener extends SparkListener {
     var tasks:scala.collection.mutable.Seq[FlatTaskFull] = scala.collection.mutable.Seq[FlatTaskFull]()
     for((stageId,v) <- stageIdToStage) {
       for((taskId,task) <- v.tasks) {
-        tasks :+= FlatTaskFull(taskId, stageId, task.taskInfo.get.executorId, task.taskInfo.get.host,
+        tasks :+= FlatTaskFull(taskId, stageId, task.taskInfo.get.index, task.taskInfo.get.executorId, task.taskInfo.get.host,
           task.taskInfo.get.taskLocality == TaskLocality.PROCESS_LOCAL,
           task.jobEnd.get - task.submissionTime.get,
           task.taskInfo.get.launchTime - task.submissionTime.get,
