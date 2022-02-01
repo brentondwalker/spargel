@@ -2,6 +2,9 @@ package logging
 
 import org.apache.spark.executor.TaskMetrics
 import org.apache.spark.scheduler._
+import org.apache.spark.sql.Dataset
+import org.apache.spark.sql.expressions.Window
+import org.apache.spark.sql.functions.dense_rank
 
 /**
   * This class should be added as listener to a SparkContext
@@ -114,9 +117,13 @@ class LogListener extends SparkListener {
    * converted to a spark DataFrame.
    * @return Sequence of case class FlatTaskFull
    */
-  def getFullTaskMetrics(): scala.collection.mutable.Seq[FlatTaskFull] = {
+  def getFullTaskMetrics(stageIndex:Int=1): scala.collection.mutable.Seq[FlatTaskFull] = {
     var tasks:scala.collection.mutable.Seq[FlatTaskFull] = scala.collection.mutable.Seq[FlatTaskFull]()
-    for((stageId,v) <- stageIdToStage) {
+    val stageIds = stageIdToStage.keys.toSeq.sorted
+    if (stageIndex >= stageIds.length) { return scala.collection.mutable.Seq[FlatTaskFull]() }
+    //for((stageId,v) <- stageIdToStage) {
+    val stageId = stageIds(stageIndex - 1)
+    val v = stageIdToStage.get(stageId).get
       for((taskId,task) <- v.tasks) {
         tasks :+= FlatTaskFull(taskId, stageId, task.taskInfo.get.index, task.taskInfo.get.executorId, task.taskInfo.get.host,
           task.taskInfo.get.taskLocality == TaskLocality.PROCESS_LOCAL,
@@ -151,8 +158,48 @@ class LogListener extends SparkListener {
           task.taskMetrics.get.asInstanceOf[TaskMetrics].shuffleWriteMetrics.recordsWritten
         )
       }
-    }
+    //}
     tasks
+  }
+
+  /**
+   * Take an array of LogListener (e.g. from many iterations of an experiment) and
+   * return a DataSet containing all the taskMetrics.  The stageindex is for cases
+   * where the LogListener recorded multiple stages.  You can specify which stage
+   * should be extracted.  By default it takes the first stage only.
+   *
+   * @param taskMetrics
+   * @param stageIndex
+   * @return
+   */
+  def extractTaskMetricsDS(taskMetrics:Array[logging.LogListener]): Dataset[FlatTaskFull] = {
+    val tmPool = collection.mutable.ArrayBuffer[FlatTaskFull]()
+    for (e <- lla) { for (ee <- e.getFullTaskMetrics) {tmPool += ee } }
+    return tmPool.toDS
+  }
+
+  /**
+   * Take a Dataset[FlatTaskFull] that may contain the tasks of many jobs/stages, and
+   * transpose it into a Dataset whose first column is taskIndex (the index of the task
+   * within the stage), and the rest of the row is the means and variances of the tasks
+   * with the same task index.
+   *
+   * @param taskMetricsDS
+   * @return
+   */
+  def getTaskTimeMetricsByTaskIndex(taskMetricsDS:Dataset[FlatTaskFull]): Dataset[Row] = {
+    taskMetricsDS.select("taskindex", "serviceTime", "executorDeserializeTime", "executorRunTime",
+      "resultSerializationTime", "shuffleFetchWaitTime", "shuffleWriteTime", "jvmGcTime",
+      "executorDeserializeCpuTime", "executorCpuTime").groupBy("taskindex")
+      .agg(count("serviceTime"), avg("serviceTime"), sqrt(variance("serviceTime")),
+      avg("jvmGcTime"), sqrt(variance("jvmGcTime")),
+      avg("executorDeserializeTime"), sqrt(variance("executorDeserializeTime")),
+      avg("executorRunTime"), sqrt(variance("executorRunTime")),
+      avg("resultSerializationTime"), sqrt(variance("resultSerializationTime")),
+      avg("shuffleFetchWaitTime"), sqrt(variance("shuffleFetchWaitTime")),
+      avg("shuffleWriteTime"), sqrt(variance("shuffleWriteTime")),
+      avg("executorDeserializeCpuTime"), sqrt(variance("executorDeserializeCpuTime")),
+      avg("executorCpuTime"), sqrt(variance("executorCpuTime")))
   }
 
 
