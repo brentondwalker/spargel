@@ -1,10 +1,12 @@
 package logging
 
+import org.apache.spark.sql.{Row, Dataset, SparkSession}
 import org.apache.spark.executor.TaskMetrics
 import org.apache.spark.scheduler._
 import org.apache.spark.sql.Dataset
 import org.apache.spark.sql.expressions.Window
-import org.apache.spark.sql.functions.dense_rank
+import org.apache.spark.sql.functions._
+
 
 /**
   * This class should be added as listener to a SparkContext
@@ -172,10 +174,10 @@ class LogListener extends SparkListener {
    * @param stageIndex
    * @return
    */
-  def extractTaskMetricsDS(taskMetrics:Array[logging.LogListener]): Dataset[FlatTaskFull] = {
+  def extractTaskMetricsDS(taskMetrics:Array[logging.LogListener], stageIndex:Int=1): Seq[FlatTaskFull] = {
     val tmPool = collection.mutable.ArrayBuffer[FlatTaskFull]()
-    for (e <- lla) { for (ee <- e.getFullTaskMetrics) {tmPool += ee } }
-    return tmPool.toDS
+    for (e <- taskMetrics) { for (ee <- e.getFullTaskMetrics(stageIndex)) {tmPool += ee } }
+    return tmPool
   }
 
   /**
