@@ -164,47 +164,6 @@ class LogListener extends SparkListener {
     tasks
   }
 
-  /**
-   * Take an array of LogListener (e.g. from many iterations of an experiment) and
-   * return a DataSet containing all the taskMetrics.  The stageindex is for cases
-   * where the LogListener recorded multiple stages.  You can specify which stage
-   * should be extracted.  By default it takes the first stage only.
-   *
-   * @param taskMetrics
-   * @param stageIndex
-   * @return
-   */
-  def extractTaskMetricsDS(taskMetrics:Array[logging.LogListener], stageIndex:Int=1): Seq[FlatTaskFull] = {
-    val tmPool = collection.mutable.ArrayBuffer[FlatTaskFull]()
-    for (e <- taskMetrics) { for (ee <- e.getFullTaskMetrics(stageIndex)) {tmPool += ee } }
-    return tmPool
-  }
-
-  /**
-   * Take a Dataset[FlatTaskFull] that may contain the tasks of many jobs/stages, and
-   * transpose it into a Dataset whose first column is taskIndex (the index of the task
-   * within the stage), and the rest of the row is the means and variances of the tasks
-   * with the same task index.
-   *
-   * @param taskMetricsDS
-   * @return
-   */
-  def getTaskTimeMetricsByTaskIndex(taskMetricsDS:Dataset[FlatTaskFull]): Dataset[Row] = {
-    taskMetricsDS.select("taskindex", "serviceTime", "executorDeserializeTime", "executorRunTime",
-      "resultSerializationTime", "shuffleFetchWaitTime", "shuffleWriteTime", "jvmGcTime",
-      "executorDeserializeCpuTime", "executorCpuTime").groupBy("taskindex")
-      .agg(count("serviceTime"), avg("serviceTime"), sqrt(variance("serviceTime")),
-      avg("jvmGcTime"), sqrt(variance("jvmGcTime")),
-      avg("executorDeserializeTime"), sqrt(variance("executorDeserializeTime")),
-      avg("executorRunTime"), sqrt(variance("executorRunTime")),
-      avg("resultSerializationTime"), sqrt(variance("resultSerializationTime")),
-      avg("shuffleFetchWaitTime"), sqrt(variance("shuffleFetchWaitTime")),
-      avg("shuffleWriteTime"), sqrt(variance("shuffleWriteTime")),
-      avg("executorDeserializeCpuTime"), sqrt(variance("executorDeserializeCpuTime")),
-      avg("executorCpuTime"), sqrt(variance("executorCpuTime")))
-  }
-
-
   // Following inner classes keeps track of jobs, stages and tasks.
   case class LogJob(jobId:Int){
     var submissionTime: Option[Long] = None
@@ -229,5 +188,54 @@ class LogListener extends SparkListener {
     var job: Option[LogJob] = None
     var tasks: scala.collection.mutable.Map[Long, LogTask] = scala.collection.mutable.Map.empty[Long, LogTask]
     override def toString = { "LogStage("+stageInfo.getOrElse("None")+", "+job.getOrElse("None")+", "+tasks+")" }
+  }
+}
+
+
+/**
+ * Companion object for LogListener.
+ * This has functions for manipulating collections of LogListener.  Things that
+ * would be static functions in the LogListener class if this were Java, but
+ * in Scala they go in the companion object.
+ */
+object LogListener {
+  /**
+   * Take an array of LogListener (e.g. from many iterations of an experiment) and
+   * return a DataSet containing all the taskMetrics.  The stageindex is for cases
+   * where the LogListener recorded multiple stages.  You can specify which stage
+   * should be extracted.  By default it takes the first stage only.
+   *
+   * @param taskMetrics
+   * @param stageIndex
+   * @return
+   */
+  def extractTaskMetrics(taskMetrics:Array[logging.LogListener], stageIndex:Int=1): Seq[FlatTaskFull] = {
+    val tmPool = collection.mutable.ArrayBuffer[FlatTaskFull]()
+    for (e <- taskMetrics) { for (ee <- e.getFullTaskMetrics(stageIndex)) {tmPool += ee } }
+    return tmPool
+  }
+
+  /**
+   * Take a Dataset[FlatTaskFull] that may contain the tasks of many jobs/stages, and
+   * transpose it into a Dataset whose first column is taskIndex (the index of the task
+   * within the stage), and the rest of the row is the means and variances of the tasks
+   * with the same task index.
+   *
+   * @param taskMetricsDS
+   * @return
+   */
+  def getTaskTimeMetricsByTaskIndex(taskMetricsDS:Dataset[FlatTaskFull]): Dataset[Row] = {
+    taskMetricsDS.select("taskindex", "serviceTime", "executorDeserializeTime", "executorRunTime",
+      "resultSerializationTime", "shuffleFetchWaitTime", "shuffleWriteTime", "jvmGcTime",
+      "executorDeserializeCpuTime", "executorCpuTime").groupBy("taskindex")
+      .agg(count("serviceTime"), avg("serviceTime"), sqrt(variance("serviceTime")),
+        avg("jvmGcTime"), sqrt(variance("jvmGcTime")),
+        avg("executorDeserializeTime"), sqrt(variance("executorDeserializeTime")),
+        avg("executorRunTime"), sqrt(variance("executorRunTime")),
+        avg("resultSerializationTime"), sqrt(variance("resultSerializationTime")),
+        avg("shuffleFetchWaitTime"), sqrt(variance("shuffleFetchWaitTime")),
+        avg("shuffleWriteTime"), sqrt(variance("shuffleWriteTime")),
+        avg("executorDeserializeCpuTime"), sqrt(variance("executorDeserializeCpuTime")),
+        avg("executorCpuTime"), sqrt(variance("executorCpuTime")))
   }
 }
