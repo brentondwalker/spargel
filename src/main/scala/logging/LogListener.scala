@@ -122,7 +122,7 @@ class LogListener extends SparkListener {
   def getFullTaskMetrics(stageIndex:Int=1): scala.collection.mutable.Seq[FlatTaskFull] = {
     var tasks:scala.collection.mutable.Seq[FlatTaskFull] = scala.collection.mutable.Seq[FlatTaskFull]()
     val stageIds = stageIdToStage.keys.toSeq.sorted
-    if (stageIndex >= stageIds.length) { return scala.collection.mutable.Seq[FlatTaskFull]() }
+    if (stageIndex > stageIds.length) { return scala.collection.mutable.Seq[FlatTaskFull]() }
     //for((stageId,v) <- stageIdToStage) {
     val stageId = stageIds(stageIndex - 1)
     val v = stageIdToStage.get(stageId).get
@@ -228,14 +228,16 @@ object LogListener {
     taskMetricsDS.select("taskindex", "serviceTime", "executorDeserializeTime", "executorRunTime",
       "resultSerializationTime", "shuffleFetchWaitTime", "shuffleWriteTime", "jvmGcTime",
       "executorDeserializeCpuTime", "executorCpuTime").groupBy("taskindex")
-      .agg(count("serviceTime"), avg("serviceTime"), sqrt(variance("serviceTime")),
-        avg("jvmGcTime"), sqrt(variance("jvmGcTime")),
-        avg("executorDeserializeTime"), sqrt(variance("executorDeserializeTime")),
-        avg("executorRunTime"), sqrt(variance("executorRunTime")),
-        avg("resultSerializationTime"), sqrt(variance("resultSerializationTime")),
-        avg("shuffleFetchWaitTime"), sqrt(variance("shuffleFetchWaitTime")),
-        avg("shuffleWriteTime"), sqrt(variance("shuffleWriteTime")),
-        avg("executorDeserializeCpuTime"), sqrt(variance("executorDeserializeCpuTime")),
-        avg("executorCpuTime"), sqrt(variance("executorCpuTime")))
+      .agg(count("serviceTime").as("count"), avg("serviceTime").as("avg_serviceTime"), sqrt(variance("serviceTime").as("var_serviceTime"),
+        avg("sojournTime").as("avg_sojournTime"), sqrt(variance("sojournTime")).as("var_sojournTime"),
+        avg("waitingTime").as("avg_waitingTime"), sqrt(variance("waitingTime")).as("var_waitingTime"),
+        avg("jvmGcTime").as("avg_jvmGcTime"), sqrt(variance("jvmGcTime")).as("var_jvmGcTime"),
+        avg("executorDeserializeTime").as("avg_executorDeserializeTime"), sqrt(variance("executorDeserializeTime")).as("var_executorDeserializeTime"),
+        avg("executorRunTime").as("avg_executorRunTime"), sqrt(variance("executorRunTime")).as("var_executorRunTime"),
+        avg("resultSerializationTime").as("avg_resultSerializationTime"), sqrt(variance("resultSerializationTime")).as("var_resultSerializationTime"),
+        avg("shuffleFetchWaitTime").as("avg_shuffleFetchWaitTime"), sqrt(variance("shuffleFetchWaitTime")).as("var_shuffleFetchWaitTime"),
+        avg("shuffleWriteTime").as("avg_shuffleWriteTime"), sqrt(variance("shuffleWriteTime")).as("var_shuffleWriteTime"),
+        avg("executorDeserializeCpuTime").as("avg_executorDeserializeCpuTime"), sqrt(variance("executorDeserializeCpuTime")).as("var_executorDeserializeCpuTime"),
+        avg("executorCpuTime").as("avg_executorCpuTime"), sqrt(variance("executorCpuTime")).as("var_executorCpuTime"))
   }
 }
