@@ -225,7 +225,7 @@ object LogListener {
    * @return
    */
   def getTaskTimeMetricsByTaskIndex(taskMetricsDS:Dataset[FlatTaskFull]): Dataset[Row] = {
-    taskMetricsDS.select("taskindex", "serviceTime", "executorDeserializeTime", "executorRunTime",
+    taskMetricsDS.select("taskindex", "serviceTime", "sojournTime", "waitingTime", "executorDeserializeTime", "executorRunTime",
       "resultSerializationTime", "shuffleFetchWaitTime", "shuffleWriteTime", "jvmGcTime",
       "executorDeserializeCpuTime", "executorCpuTime").groupBy("taskindex")
       .agg(count("serviceTime").as("count"), avg("serviceTime").as("avg_serviceTime"), sqrt(variance("serviceTime")).as("var_serviceTime"),
