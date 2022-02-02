@@ -228,7 +228,7 @@ object LogListener {
     taskMetricsDS.select("taskindex", "serviceTime", "executorDeserializeTime", "executorRunTime",
       "resultSerializationTime", "shuffleFetchWaitTime", "shuffleWriteTime", "jvmGcTime",
       "executorDeserializeCpuTime", "executorCpuTime").groupBy("taskindex")
-      .agg(count("serviceTime").as("count"), avg("serviceTime").as("avg_serviceTime"), sqrt(variance("serviceTime").as("var_serviceTime"),
+      .agg(count("serviceTime").as("count"), avg("serviceTime").as("avg_serviceTime"), sqrt(variance("serviceTime")).as("var_serviceTime"),
         avg("sojournTime").as("avg_sojournTime"), sqrt(variance("sojournTime")).as("var_sojournTime"),
         avg("waitingTime").as("avg_waitingTime"), sqrt(variance("waitingTime")).as("var_waitingTime"),
         avg("jvmGcTime").as("avg_jvmGcTime"), sqrt(variance("jvmGcTime")).as("var_jvmGcTime"),
