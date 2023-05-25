@@ -249,9 +249,11 @@ object RddPartitioner {
       val bmm = SparkEnv.get.blockManager.master
       val rddId = r.id
       val nparts = r.getNumPartitions
-      
+
+      //.map( i => bmm.getBlockStatus(RDDBlockId(rddId,i), askSlaves=true)
+
       (0 until nparts).toArray
-        .map( i => bmm.getBlockStatus(RDDBlockId(rddId,i), askSlaves=true)
+	.map( i => bmm.getBlockStatus(RDDBlockId(rddId,i), askStorageEndpoints=true)  // askSlaves=true) // for spark 3.1 and later
                       .map( x => PartitionHostInfo(rddId,
                         i,
                         x._1.executorId,
