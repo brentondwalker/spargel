@@ -10,7 +10,7 @@ import org.apache.spark.scheduler._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.SparkEnv
-
+import org.apache.spark.BarrierTaskContext
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
@@ -47,8 +47,10 @@ object WorkloadArrivals {
 		cli_options.addOption("n", "numsamples", true, "number of jobs to run");
 		cli_options.addOption("s", "sequential-jobs", false, "submit the jobs sequentially instead of from separate threads");
 		cli_options.addOption("p", "persisted-rdd", false, "jobs are tied to particular executors, subject to spark.locality.wait configuration");
-                cli_options.addOption("b", "barrier-rdd", false, "jobs will be executed in barrier mode, with the requirement that all tasks start simultaneously");
-                cli_options.addOption("g", "staged", false, "jobs are two-staged, with a groupBy in between to force a shuffle");
+		cli_options.addOption("b", "barrier-rdd", false, "jobs will be executed in barrier mode, with the requirement that all tasks start simultaneously");
+		cli_options.addOption("h", "takehalf", false, "jobs are repartitioned to always take half of the available cores");
+		cli_options.addOption("g", "staged", false, "jobs are two-staged, with a groupBy in between to force a shuffle");
+		cli_options.addOption("d", "departure-barrier", false, "combined with -b or -h, runs jobs also with a departure barrier");
 
 		// I'm trying to re-use code here, but using OptionBuilder from commons-cli 1.2
 		// in scala is problematic because it has these static methods and the have to
@@ -246,12 +248,13 @@ object WorkloadArrivals {
    *        this is parallelized I ran into the problem that in some cases we would be passing
    *        identical RNGs to the workers, and generating identical service times.
    */
-  def runEmptyBarrierSlices(spark:SparkContext, slices: Int, serviceTimes: List[Double], jobId: Int): Long = {
+  def runEmptyBarrierSlices(spark:SparkContext, slices: Int, serviceTimes: List[Double], jobId: Int, departureBarrier:Boolean): Long = {
     //println("serviceTimes = "+serviceTimes)
     spark.parallelize(1 to slices, slices).barrier().mapPartitions { i =>
       val taskId = i.next()
       val jobLength = serviceTimes(taskId-1)
       val startTime = java.lang.System.currentTimeMillis()
+      val barrier_context = BarrierTaskContext.get()
       val targetStopTime = startTime + 1000*jobLength
 			println("    +++ TASK "+jobId+"."+taskId+" START: "+startTime)
 			while (java.lang.System.currentTimeMillis() < targetStopTime) {
@@ -262,9 +265,42 @@ object WorkloadArrivals {
       val stopTime = java.lang.System.currentTimeMillis()
       println("    --- TASK "+jobId+"."+taskId+" STOP: "+stopTime)
       println("    === TASK "+jobId+"."+taskId+" ELAPSED: "+(stopTime-startTime))
+      if (departureBarrier) barrier_context.barrier()
       Iterator(1)
     }.count()
   }
+
+	def runEmptyTakeHalfSlices(spark:SparkContext, slices:Int, parallelism:Int, serviceTimes: List[Double], jobId: Int, departureBarrier:Boolean): Long = {
+		//println("serviceTimes = "+serviceTimes)
+		spark.parallelize(1 to parallelism, parallelism).barrier().mapPartitions { i =>
+			val taskId:Int = i.next()
+			// how many of the service times does this job take?
+			var jobLength = 0.0
+			var ti = taskId-1
+			var numCombinedTasks = 0
+			while (ti < slices) {
+				jobLength += serviceTimes(ti)
+				ti += parallelism
+				numCombinedTasks += 1
+			}
+			println("+++ combined tasks: "+numCombinedTasks)
+			val startTime = java.lang.System.currentTimeMillis()
+			val targetStopTime = startTime + 1000*jobLength
+			println("    +++ TASK "+jobId+"."+taskId+" START: "+startTime)
+			val barrier_context = BarrierTaskContext.get()
+			while (java.lang.System.currentTimeMillis() < targetStopTime) {
+				val x = random * 2 - 1
+				val y = random * 2 - 1
+			}
+
+			val stopTime = java.lang.System.currentTimeMillis()
+			println("    --- TASK "+jobId+"."+taskId+" STOP: "+stopTime)
+			println("    === TASK "+jobId+"."+taskId+" ELAPSED: "+(stopTime-startTime))
+			if (departureBarrier) barrier_context.barrier()
+			Iterator(1)
+		}.count()
+	}
+
 
 
   /**
@@ -353,8 +389,10 @@ object WorkloadArrivals {
 		val numWorkers = if (options.hasOption("w")) options.getOptionValue("w").toInt else 1
 		val serialJobs = options.hasOption("s")
 		val persistedRdd = options.hasOption("p")
-                val barrierRdd = options.hasOption("b")  // for now, option "p" will override option "b"
-                val stagedSlices = options.hasOption("g")  // for now, option "p" and "b" will override "g"
+		val takehalf = options.hasOption("h")   // an unfortunate name for the option.  Conflicts the usual "help" flag
+		val barrierRdd = options.hasOption("b")  // for now, option "p" will override option "b"
+		val stagedSlices = options.hasOption("g")  // for now, option "p" and "b" will override "g"
+		val departureBarrier = options.hasOption("d")  
 		
 	  val conf = new SparkConf()
 	    .setAppName("ThreadedMapJobs")
@@ -365,7 +403,7 @@ object WorkloadArrivals {
 		// give the system a little time for the executors to start... 30 seconds?
 		// this is stupid b/c the full set of executors actually take less tha 1s to start
 		print("Waiting a moment to let the executors start...")
-		Thread sleep 1000*10
+		Thread sleep 1000*numWorkers*10
     		
 		// check how many cores were actually allocated
 		// one core in the list will be the driver.  The rest should be workers
@@ -392,28 +430,36 @@ object WorkloadArrivals {
 		val threadList = ListBuffer[Thread]()
 		
 		// if we persist the RDD, tasks are bound to the executor where their partition lives
-		//val r = if (persistedRdd) createPersistedRdd(spark, slicesPerJob) else None
-		val r = createPersistedRdd(spark, slicesPerJob)
+		val r:RDD[Int] = if (persistedRdd) createPersistedRdd(spark, slicesPerJob) else spark.emptyRDD[Int]
+		//val r = createPersistedRdd(spark, slicesPerJob)
 			
     while (jobsRun < totalJobs) {
 			println("")
-			
+
+			// check how many tasks are already running
+			val nrta = spark.statusTracker.getExecutorInfos.map( x => x.numRunningTasks()).sum
+			println("+++ tasks running: "+nrta+"\t total cores: "+coresAllocated)
+			val parallelism:Int = ((coresAllocated - nrta)/2).floor.max(1).round
+			println("+++ allowed parallelism: "+parallelism)
+
 			val t = new Thread(new Runnable {
 			  def run() {
-				  val jobId = jobsRun
+					val jobId = jobsRun
 					val startTime = java.lang.System.currentTimeMillis();
-				  lastArrivalTime = startTime
-					println("+++ JOB "+jobId+" START: "+startTime)
-					
+					lastArrivalTime = startTime
+					println("+++ JOB " + jobId + " START: " + startTime)
+
 					// we would like to pass the serviceProcess in to this method and let the workers
 					// generate their own service times, but in some cases they end up generating
 					// from identical RNGs, and get the same result.  So we generate the service times here.
 					// These are actually generated in different threads, but it's the same process, same JVM.
-				  if (persistedRdd) {
-				    runEmptyPersistedSlices(r, List.tabulate(slicesPerJob)(n => serviceProcess()), jobId)
-				  } else if (barrierRdd) {
-  					runEmptyBarrierSlices(spark, slicesPerJob, List.tabulate(slicesPerJob)(n => serviceProcess()), jobId)
-				  } else if (stagedSlices) {
+					if (persistedRdd) {
+						runEmptyPersistedSlices(r, List.tabulate(slicesPerJob)(n => serviceProcess()), jobId)
+					} else if (barrierRdd) {
+						runEmptyBarrierSlices(spark, slicesPerJob, List.tabulate(slicesPerJob)(n => serviceProcess()), jobId, departureBarrier)
+					} else if (takehalf) {
+						runEmptyTakeHalfSlices(spark, slicesPerJob, parallelism, List.tabulate(slicesPerJob)(n => serviceProcess()), jobId, departureBarrier)
+					} else if (stagedSlices) {
        					runEmptyStagedSlices(spark, slicesPerJob, List.tabulate(slicesPerJob)(n => serviceProcess()), jobId) 
                                   } else {
   					runEmptySlices(spark, slicesPerJob, List.tabulate(slicesPerJob)(n => serviceProcess()), jobId)
@@ -461,7 +507,7 @@ object WorkloadArrivals {
 		  t.join()  // unnecessary?
 		}
 		
-		destroyPersistedRdd(r)
+		if (persistedRdd) { destroyPersistedRdd(r) }
 		
 		println("*** FINISHED!! ***")
 		if (! spark.isStopped) {

@@ -13,7 +13,9 @@ def main():
     parser.add_argument("-n", '--num_addresses', help='number of addresses to assign', type=int)
     parser.add_argument("-p", '--network_prefix', help='the network prefix to assignem them in', default='10.10.1')
     parser.add_argument("-m", '--subnet_mask', help='length of subnet mask', type=int, default=24)
+    parser.add_argument("-d", '--delete_old', help='delete teh old network addresses', action='store_true')
     parser.add_argument("-x", '--execute', help='execute the commands', action='store_true')
+    parser.add_argument("-c", '--containers', help='start the corresponding containers', action='store_true')
     args = parser.parse_args()
 
     # get the experimental network interface
@@ -31,6 +33,14 @@ def main():
         if args.execute:
             response = subprocess.Popen(ip_addr_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
             print(response)
+        if args.containers:
+            spark_home = "/opt/spark"
+            spark_master = "spark://10.10.1.1:7077"
+            docker_cmd = "sudo docker run -d --privileged -v "+spark_home+":/opt/spark --net=host --cpus=1 spark-test-worker --ip "+args.network_prefix+"."+str(aa)+" "+spark_master
+            print(docker_cmd)
+            docker_response = subprocess.Popen(docker_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
+            print(docker_response)
+
 
     
 # ======================================
