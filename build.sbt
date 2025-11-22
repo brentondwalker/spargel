@@ -1,7 +1,7 @@
 name         := "spargel"
-version      := "3.0"
+version      := "4.0"
 organization := "ikt"
-scalaVersion := "2.12.15"
+scalaVersion := "2.13.17"
 
 /**
   * Makes it possible to run the application from sbt-shell.
@@ -10,10 +10,8 @@ scalaVersion := "2.12.15"
   */
 fork         := true
 
-libraryDependencies += "org.apache.spark" %% "spark-core"  % "3.2.4"
-libraryDependencies += "org.apache.spark" %% "spark-sql"   % "3.2.4"
-//libraryDependencies += "org.vegas-viz" % "vegas-spark_2.11" % "0.3.11"
-//libraryDependencies += "org.vegas-viz" % "vegas-macros_2.11" % "0.3.11"
+libraryDependencies += "org.apache.spark" %% "spark-core" % "4.1.0-preview4"
+libraryDependencies += "org.apache.spark" %% "spark-sql" % "4.1.0-preview4" % "provided"
 libraryDependencies += "commons-cli" % "commons-cli" % "1.5.0"
 libraryDependencies += "org.apache.commons" % "commons-math3" % "3.6.1"
 

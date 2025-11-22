@@ -209,7 +209,7 @@ object LogListener {
    * @param stageIndex
    * @return
    */
-  def extractTaskMetrics(taskMetrics:Array[logging.LogListener], stageIndex:Int=1): Seq[FlatTaskFull] = {
+  def extractTaskMetrics(taskMetrics:Array[logging.LogListener], stageIndex:Int=1): collection.mutable.Seq[FlatTaskFull] = {
     val tmPool = collection.mutable.ArrayBuffer[FlatTaskFull]()
     for (e <- taskMetrics) { for (ee <- e.getFullTaskMetrics(stageIndex)) {tmPool += ee } }
     return tmPool
